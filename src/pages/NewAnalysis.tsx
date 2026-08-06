@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuid } from 'uuid';
 import { Button, Card, Input, Textarea } from '../components/ui';
@@ -29,6 +29,9 @@ export default function NewAnalysis() {
   const [extracting, setExtracting] = useState(false);
   const [extractProgress, setExtractProgress] = useState(0);
   const [extractError, setExtractError] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [fileError, setFileError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Step 3: focus areas
   const [focusAreas, setFocusAreas] = useState<string[]>([]);
@@ -44,6 +47,16 @@ export default function NewAnalysis() {
   useEffect(() => {
     playersStore.all().then(setRoster);
   }, []);
+
+  function handleFile(f: File | null) {
+    setFileError('');
+    if (f && !f.type.startsWith('video/')) {
+      setFileError(`"${f.name}" doesn't look like a video file.`);
+      return;
+    }
+    setFile(f);
+    setFrames([]);
+  }
 
   function toggleFocus(area: string) {
     setFocusAreas((prev) => (prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]));
@@ -164,15 +177,46 @@ export default function NewAnalysis() {
       {step === 2 && (
         <Card className="space-y-4">
           <h2 className="font-medium text-emerald-50">Upload film &amp; sample frames</h2>
-          <input
-            type="file"
-            accept="video/*"
-            onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null);
-              setFrames([]);
+
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
             }}
-            className="block w-full text-sm text-emerald-200/70 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-700 file:px-3 file:py-2 file:text-white file:text-sm hover:file:bg-emerald-600"
-          />
+            onDragLeave={(e) => {
+              e.preventDefault();
+              setIsDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDragging(false);
+              handleFile(e.dataTransfer.files?.[0] ?? null);
+            }}
+            className={`cursor-pointer rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
+              isDragging
+                ? 'border-emerald-400 bg-emerald-900/40'
+                : 'border-emerald-900/60 hover:border-emerald-700 hover:bg-emerald-950/30'
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+              className="hidden"
+            />
+            <p className="text-emerald-100 font-medium">
+              {file ? file.name : 'Drop a game video here, or click to browse'}
+            </p>
+            <p className="text-xs text-emerald-200/50 mt-1">
+              {file
+                ? `${(file.size / (1024 * 1024)).toFixed(1)} MB — drop a new file to replace it`
+                : 'MP4, MOV, or any format your browser can play'}
+            </p>
+          </div>
+
+          {fileError && <p className="text-sm text-red-300">{fileError}</p>}
 
           {file && (
             <video src={videoUrl} controls className="w-full rounded-lg max-h-72 bg-black" />
