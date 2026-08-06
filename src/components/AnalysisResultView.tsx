@@ -1,5 +1,6 @@
 import type { Analysis } from '../types';
 import { Badge, Card } from './ui';
+import { nonZeroStats } from '../lib/stats';
 
 function List({ items, tone }: { items: string[]; tone?: 'good' | 'bad' }) {
   if (!items?.length) return <p className="text-sm text-emerald-200/40">None noted.</p>;
@@ -14,6 +15,32 @@ function List({ items, tone }: { items: string[]; tone?: 'good' | 'bad' }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function StatTile({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-md bg-[#0b1512] border border-emerald-900/50 px-3 py-2 text-center">
+      <p className="text-lg font-semibold text-emerald-50">{value}</p>
+      <p className="text-[11px] text-emerald-200/50 mt-0.5">{label}</p>
+    </div>
+  );
+}
+
+function PlayerStatChips({ stats }: { stats: Analysis['result']['playerNotes'][number]['stats'] }) {
+  const chips = nonZeroStats(stats);
+  if (chips.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2 mb-3">
+      {chips.map((c) => (
+        <span
+          key={c.label}
+          className="text-[11px] rounded-full bg-emerald-900/50 text-emerald-100 px-2 py-0.5 whitespace-nowrap"
+        >
+          <span className="text-emerald-300 font-semibold">{c.value}</span> {c.label}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -57,6 +84,43 @@ export default function AnalysisResultView({ analysis }: { analysis: Analysis })
         </Card>
       )}
 
+      {result.teamStats && (
+        <Card>
+          <div className="flex items-baseline justify-between gap-2 mb-3">
+            <h3 className="font-medium text-emerald-50">Team stats (estimated)</h3>
+          </div>
+
+          <p className="text-xs uppercase tracking-wide text-emerald-200/50 mb-2">Passing</p>
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-4">
+            <StatTile label="Completion %" value={`${result.teamStats.passing.completionPercent}%`} />
+            <StatTile label="Short pass mix" value={`${result.teamStats.passing.shortPassPercent}%`} />
+            <StatTile label="Medium pass mix" value={`${result.teamStats.passing.mediumPassPercent}%`} />
+            <StatTile label="Deep pass mix" value={`${result.teamStats.passing.deepPassPercent}%`} />
+            <StatTile label="Yds / short pass" value={result.teamStats.passing.yardsPerShortPass} />
+            <StatTile label="Yds / medium pass" value={result.teamStats.passing.yardsPerMediumPass} />
+            <StatTile label="Yds / deep pass" value={result.teamStats.passing.yardsPerDeepPass} />
+          </div>
+
+          <p className="text-xs uppercase tracking-wide text-emerald-200/50 mb-2">Play direction</p>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <StatTile label="Left %" value={`${result.teamStats.playDirection.leftPercent}%`} />
+            <StatTile label="Middle %" value={`${result.teamStats.playDirection.middlePercent}%`} />
+            <StatTile label="Right %" value={`${result.teamStats.playDirection.rightPercent}%`} />
+          </div>
+
+          <p className="text-xs uppercase tracking-wide text-emerald-200/50 mb-2">Defense</p>
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <StatTile label="Blitz rate (3+ rushers)" value={`${result.teamStats.defense.blitzPercent}%`} />
+          </div>
+
+          {result.teamStats.methodologyNote && (
+            <p className="text-xs text-emerald-200/40 italic mt-2 border-t border-emerald-900/50 pt-2">
+              {result.teamStats.methodologyNote}
+            </p>
+          )}
+        </Card>
+      )}
+
       {result.focusAreaFindings?.length > 0 && (
         <div className="space-y-3">
           <h3 className="font-medium text-emerald-50">Focus area findings</h3>
@@ -93,6 +157,7 @@ export default function AnalysisResultView({ analysis }: { analysis: Analysis })
                   <span className="font-medium text-emerald-50">{p.playerName || 'Unidentified player'}</span>
                   {p.grade && <Badge tone="good">{p.grade}</Badge>}
                 </div>
+                <PlayerStatChips stats={p.stats} />
                 <p className="text-xs uppercase tracking-wide text-emerald-200/50 mb-1">Observations</p>
                 <List items={p.observations} />
                 <p className="text-xs uppercase tracking-wide text-emerald-200/50 mt-2 mb-1">Recommendations</p>

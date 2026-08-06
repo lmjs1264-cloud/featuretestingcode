@@ -31,6 +31,42 @@ export interface FocusAreaFinding {
   recommendations: string[];
 }
 
+export interface PlayerGameStats {
+  passingTDs: number;
+  passingYards: number;
+  passingCompletionPercent: number;
+  receptions: number;
+  receivingYards: number;
+  receivingTDs: number;
+  rushingYards: number;
+  rushingTDs: number;
+  rushingAttempts: number;
+  sacks: number;
+  tackles: number;
+  interceptions: number;
+  passBreakups: number;
+  punts: number;
+  puntYards: number;
+}
+
+export const EMPTY_PLAYER_STATS: PlayerGameStats = {
+  passingTDs: 0,
+  passingYards: 0,
+  passingCompletionPercent: 0,
+  receptions: 0,
+  receivingYards: 0,
+  receivingTDs: 0,
+  rushingYards: 0,
+  rushingTDs: 0,
+  rushingAttempts: 0,
+  sacks: 0,
+  tackles: 0,
+  interceptions: 0,
+  passBreakups: 0,
+  punts: 0,
+  puntYards: 0,
+};
+
 export interface PlayerNote {
   jerseyNumber?: string;
   playerName?: string;
@@ -38,6 +74,34 @@ export interface PlayerNote {
   observations: string[];
   recommendations: string[];
   grade?: string;
+  stats: PlayerGameStats;
+}
+
+export interface TeamPassingStats {
+  shortPassPercent: number;
+  mediumPassPercent: number;
+  deepPassPercent: number;
+  completionPercent: number;
+  yardsPerShortPass: number;
+  yardsPerMediumPass: number;
+  yardsPerDeepPass: number;
+}
+
+export interface TeamPlayDirectionStats {
+  leftPercent: number;
+  middlePercent: number;
+  rightPercent: number;
+}
+
+export interface TeamDefenseStats {
+  blitzPercent: number;
+}
+
+export interface TeamStats {
+  passing: TeamPassingStats;
+  playDirection: TeamPlayDirectionStats;
+  defense: TeamDefenseStats;
+  methodologyNote: string;
 }
 
 export interface AnalysisResult {
@@ -46,10 +110,21 @@ export interface AnalysisResult {
     weaknesses: string[];
     keyMoments: KeyMoment[];
   };
+  teamStats: TeamStats;
   focusAreaFindings: FocusAreaFinding[];
   playerNotes: PlayerNote[];
   nextPracticeFocus: string[];
 }
+
+export interface StatThresholds {
+  shortMaxYards: number;
+  mediumMaxYards: number;
+}
+
+export const DEFAULT_STAT_THRESHOLDS: StatThresholds = {
+  shortMaxYards: 9,
+  mediumMaxYards: 19,
+};
 
 export interface Analysis {
   id: string;
@@ -57,6 +132,7 @@ export interface Analysis {
   title: string;
   focusAreas: string[];
   customFocusNotes?: string;
+  statThresholds: StatThresholds;
   model: string;
   createdAt: number;
   frames: FrameCapture[];

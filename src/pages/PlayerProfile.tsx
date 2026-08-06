@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { analysesStore, gamesStore, playersStore } from '../lib/db';
 import type { Analysis, Game, Player, PlayerNote } from '../types';
 import { Badge, Card, EmptyState } from '../components/ui';
+import { nonZeroStats, sumStats } from '../lib/stats';
 
 interface NoteWithContext {
   note: PlayerNote;
@@ -50,6 +51,9 @@ export default function PlayerProfile() {
     })();
   }, [playerId]);
 
+  const totals = useMemo(() => sumStats(notes.map((n) => n.note.stats)), [notes]);
+  const totalsChips = useMemo(() => nonZeroStats(totals), [totals]);
+
   if (loading) return null;
   if (!player) return <EmptyState title="Player not found" />;
 
@@ -67,6 +71,26 @@ export default function PlayerProfile() {
           Back to roster
         </Link>
       </div>
+
+      {totalsChips.length > 0 && (
+        <Card>
+          <h2 className="font-medium text-emerald-50 mb-2">Totals across all analyzed games</h2>
+          <p className="text-xs text-emerald-200/50 mb-3">
+            Summed from every analysis this player appears in. These are film-based estimates, not an official
+            scorebook.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {totalsChips.map((c) => (
+              <span
+                key={c.label}
+                className="text-xs rounded-full bg-emerald-900/50 text-emerald-100 px-2.5 py-1 whitespace-nowrap"
+              >
+                <span className="text-emerald-300 font-semibold">{c.value}</span> {c.label}
+              </span>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {notes.length === 0 ? (
         <EmptyState
@@ -92,6 +116,18 @@ export default function PlayerProfile() {
                   </>
                 )}
               </div>
+              {nonZeroStats(note.stats).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {nonZeroStats(note.stats).map((c) => (
+                    <span
+                      key={c.label}
+                      className="text-[11px] rounded-full bg-emerald-900/50 text-emerald-100 px-2 py-0.5 whitespace-nowrap"
+                    >
+                      <span className="text-emerald-300 font-semibold">{c.value}</span> {c.label}
+                    </span>
+                  ))}
+                </div>
+              )}
               {note.observations.length > 0 && (
                 <div className="mb-2">
                   <p className="text-xs uppercase tracking-wide text-emerald-200/50 mb-1">Observations</p>

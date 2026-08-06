@@ -6,8 +6,8 @@ import { analyzeFilm } from '../lib/analyze';
 import { extractFrames } from '../lib/frames';
 import { analysesStore, gamesStore, playersStore } from '../lib/db';
 import { getApiKey, getModel } from '../state/settings';
-import { DEFAULT_FOCUS_AREAS } from '../types';
-import type { Player } from '../types';
+import { DEFAULT_FOCUS_AREAS, DEFAULT_STAT_THRESHOLDS } from '../types';
+import type { Player, StatThresholds } from '../types';
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -22,7 +22,7 @@ export default function NewAnalysis() {
 
   // Step 2: video + frames
   const [file, setFile] = useState<File | null>(null);
-  const [frameCount, setFrameCount] = useState(16);
+  const [frameCount, setFrameCount] = useState(24);
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(100);
   const [frames, setFrames] = useState<{ dataUrl: string; timeLabel: string }[]>([]);
@@ -33,9 +33,10 @@ export default function NewAnalysis() {
   const [fileError, setFileError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Step 3: focus areas
+  // Step 3: focus areas & stat calibration
   const [focusAreas, setFocusAreas] = useState<string[]>([]);
   const [customFocus, setCustomFocus] = useState('');
+  const [statThresholds, setStatThresholds] = useState<StatThresholds>(DEFAULT_STAT_THRESHOLDS);
 
   // Step 4: run
   const [running, setRunning] = useState(false);
@@ -95,6 +96,7 @@ export default function NewAnalysis() {
         focusAreas,
         customFocusNotes: customFocus.trim() || undefined,
         gameContext: `${title}${opponent ? ` vs ${opponent}` : ''} — ${date}`,
+        statThresholds,
       });
 
       await gamesStore.put({
@@ -112,6 +114,7 @@ export default function NewAnalysis() {
         title: focusAreas.length ? focusAreas.join(', ') : 'General review',
         focusAreas,
         customFocusNotes: customFocus.trim() || undefined,
+        statThresholds,
         model: getModel(),
         createdAt: Date.now(),
         frames,
@@ -229,11 +232,14 @@ export default function NewAnalysis() {
                 <input
                   type="range"
                   min={6}
-                  max={30}
+                  max={48}
                   value={frameCount}
                   onChange={(e) => setFrameCount(Number(e.target.value))}
                   className="w-full"
                 />
+                <p className="text-[11px] text-emerald-200/40 mt-1">
+                  More frames = better stat coverage (more plays actually seen), but slower and pricier per run.
+                </p>
               </div>
               <div>
                 <label className="block text-xs text-emerald-200/60 mb-1">Clip start: {trimStart}%</label>
@@ -313,6 +319,45 @@ export default function NewAnalysis() {
               placeholder="e.g. We've been getting flagged for false starts — pay close attention to snap timing."
             />
           </div>
+
+          <div className="border-t border-emerald-900/50 pt-4">
+            <h3 className="font-medium text-emerald-50 text-sm">Pass-depth calibration</h3>
+            <p className="text-xs text-emerald-200/50 mt-1 mb-3">
+              This app assumes a 60-yard field. Set the yard cutoffs used to classify each pass as short, medium, or
+              deep for the team stats (deep is anything past the medium cutoff).
+            </p>
+            <div className="grid sm:grid-cols-2 gap-3 max-w-md">
+              <div>
+                <label className="block text-xs text-emerald-200/60 mb-1">Short pass: 0–{statThresholds.shortMaxYards} yds</label>
+                <input
+                  type="range"
+                  min={3}
+                  max={statThresholds.mediumMaxYards - 1}
+                  value={statThresholds.shortMaxYards}
+                  onChange={(e) =>
+                    setStatThresholds((prev) => ({ ...prev, shortMaxYards: Number(e.target.value) }))
+                  }
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-emerald-200/60 mb-1">
+                  Medium pass: {statThresholds.shortMaxYards + 1}–{statThresholds.mediumMaxYards} yds (deep is {statThresholds.mediumMaxYards + 1}+)
+                </label>
+                <input
+                  type="range"
+                  min={statThresholds.shortMaxYards + 1}
+                  max={40}
+                  value={statThresholds.mediumMaxYards}
+                  onChange={(e) =>
+                    setStatThresholds((prev) => ({ ...prev, mediumMaxYards: Number(e.target.value) }))
+                  }
+                  className="w-full"
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="flex justify-between">
             <Button variant="ghost" onClick={() => setStep(2)}>
               Back
@@ -341,9 +386,19 @@ export default function NewAnalysis() {
               <strong className="text-emerald-50">Roster loaded:</strong> {roster.length} players
             </li>
             <li>
+              <strong className="text-emerald-50">Pass depth:</strong> short 0–{statThresholds.shortMaxYards} ·
+              medium {statThresholds.shortMaxYards + 1}–{statThresholds.mediumMaxYards} · deep{' '}
+              {statThresholds.mediumMaxYards + 1}+
+            </li>
+            <li>
               <strong className="text-emerald-50">Model:</strong> {getModel()}
             </li>
           </ul>
+
+          <p className="text-xs text-emerald-200/50">
+            Team and player stats are estimated from the {frames.length} sampled frames, not a full play-by-play
+            record — treat them as a coach's best read of the film, not an official box score.
+          </p>
 
           {runError && <p className="text-sm text-red-300">{runError}</p>}
 
