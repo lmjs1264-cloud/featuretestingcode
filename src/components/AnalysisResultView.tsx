@@ -27,7 +27,7 @@ function StatTile({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function TeamStatsPanel({ teamName, stats }: { teamName: string; stats: TeamStats }) {
+export function TeamStatsPanel({ teamName, stats }: { teamName: string; stats: TeamStats }) {
   return (
     <div>
       <p className="font-medium text-emerald-100 mb-2">{teamName}</p>

@@ -15,6 +15,7 @@ export default function App() {
         <Route path="/roster" element={<Roster />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/new" element={<NewAnalysis />} />
+        <Route path="/games/:gameId/new" element={<NewAnalysis />} />
         <Route path="/games/:gameId" element={<GameDetail />} />
         <Route path="/players/:playerId" element={<PlayerProfile />} />
       </Routes>

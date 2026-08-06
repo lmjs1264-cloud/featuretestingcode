@@ -3,7 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { analysesStore, gamesStore } from '../lib/db';
 import type { Analysis, Game } from '../types';
 import { Button, Card, EmptyState } from '../components/ui';
-import AnalysisResultView from '../components/AnalysisResultView';
+import AnalysisResultView, { TeamStatsPanel } from '../components/AnalysisResultView';
+import { rollupTeamStats } from '../lib/stats';
 
 export default function GameDetail() {
   const { gameId } = useParams<{ gameId: string }>();
@@ -33,6 +34,7 @@ export default function GameDetail() {
   if (!game) return <EmptyState title="Game not found" />;
 
   const active = analyses.find((a) => a.id === activeId);
+  const combined = analyses.length > 1 ? rollupTeamStats(analyses) : null;
 
   return (
     <div className="space-y-6">
@@ -47,8 +49,8 @@ export default function GameDetail() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link to="/new">
-            <Button variant="secondary">New analysis</Button>
+          <Link to={`/games/${game.id}/new`}>
+            <Button variant="secondary">Add analysis to this game</Button>
           </Link>
           <Button variant="danger" onClick={removeGame}>
             Delete game
@@ -57,9 +59,37 @@ export default function GameDetail() {
       </div>
 
       {analyses.length === 0 ? (
-        <EmptyState title="No analyses yet for this game" />
+        <EmptyState
+          title="No analyses yet for this game"
+          action={
+            <Link to={`/games/${game.id}/new`}>
+              <Button>Run the first analysis</Button>
+            </Link>
+          }
+        />
       ) : (
         <>
+          {combined && (
+            <div>
+              <h2 className="font-medium text-emerald-50 mb-1">
+                Combined team stats — all {analyses.length} analyses
+              </h2>
+              <p className="text-xs text-emerald-200/50 mb-3">
+                Numerically combined across every analysis run for this game (weighted by frames sampled in each).
+                Coaching notes below still come from a single analysis at a time — switch tabs to read each
+                segment's write-up.
+              </p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Card>
+                  <TeamStatsPanel teamName={game.yourTeamName} stats={combined.yourTeam} />
+                </Card>
+                <Card>
+                  <TeamStatsPanel teamName={game.opponent || 'Opponent'} stats={combined.opponent} />
+                </Card>
+              </div>
+            </div>
+          )}
+
           {analyses.length > 1 && (
             <div className="flex flex-wrap gap-2">
               {analyses.map((a) => (

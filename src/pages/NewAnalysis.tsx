@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { v4 as uuid } from 'uuid';
 import { Button, Card, Input, Textarea } from '../components/ui';
 import { analyzeFilm } from '../lib/analyze';
@@ -7,19 +7,23 @@ import { extractFrames } from '../lib/frames';
 import { analysesStore, gamesStore, playersStore } from '../lib/db';
 import { getApiKey, getModel, getYourTeamName, setYourTeamName } from '../state/settings';
 import { DEFAULT_FOCUS_AREAS, DEFAULT_STAT_THRESHOLDS } from '../types';
-import type { Player, StatThresholds } from '../types';
+import type { Game, Player, StatThresholds } from '../types';
 
 type Step = 1 | 2 | 3 | 4;
 
 export default function NewAnalysis() {
   const navigate = useNavigate();
+  const { gameId: existingGameId } = useParams<{ gameId?: string }>();
   const [step, setStep] = useState<Step>(1);
+  const [existingGame, setExistingGame] = useState<Game | null>(null);
+  const [existingGameLoaded, setExistingGameLoaded] = useState(!existingGameId);
 
   // Step 1: game info
   const [title, setTitle] = useState('');
   const [yourTeamName, setYourTeamNameState] = useState(() => getYourTeamName());
   const [opponent, setOpponent] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [analysisLabel, setAnalysisLabel] = useState('');
 
   // Step 2: video + frames
   const [file, setFile] = useState<File | null>(null);
@@ -49,6 +53,14 @@ export default function NewAnalysis() {
   useEffect(() => {
     playersStore.all().then(setRoster);
   }, []);
+
+  useEffect(() => {
+    if (!existingGameId) return;
+    gamesStore.get(existingGameId).then((g) => {
+      setExistingGame(g ?? null);
+      setExistingGameLoaded(true);
+    });
+  }, [existingGameId]);
 
   function handleFile(f: File | null) {
     setFileError('');
@@ -88,7 +100,18 @@ export default function NewAnalysis() {
     setRunning(true);
     setRunError('');
     try {
-      const gameId = uuid();
+      const gameToSave: Game = existingGame
+        ? existingGame
+        : {
+            id: uuid(),
+            title: title.trim() || 'Untitled game',
+            yourTeamName: yourTeamName.trim(),
+            opponent: opponent.trim() || undefined,
+            date,
+            createdAt: Date.now(),
+          };
+
+      const labelSuffix = analysisLabel.trim() ? ` (${analysisLabel.trim()})` : '';
       const result = await analyzeFilm({
         apiKey,
         model: getModel(),
@@ -96,26 +119,19 @@ export default function NewAnalysis() {
         roster,
         focusAreas,
         customFocusNotes: customFocus.trim() || undefined,
-        gameContext: `${title}${opponent ? ` vs ${opponent}` : ''} — ${date}`,
+        gameContext: `${gameToSave.title}${gameToSave.opponent ? ` vs ${gameToSave.opponent}` : ''} — ${gameToSave.date}${labelSuffix}`,
         statThresholds,
-        yourTeamName: yourTeamName.trim(),
-        opponentName: opponent.trim() || undefined,
+        yourTeamName: gameToSave.yourTeamName,
+        opponentName: gameToSave.opponent,
       });
 
-      await gamesStore.put({
-        id: gameId,
-        title: title.trim() || 'Untitled game',
-        yourTeamName: yourTeamName.trim(),
-        opponent: opponent.trim() || undefined,
-        date,
-        createdAt: Date.now(),
-      });
+      await gamesStore.put(gameToSave);
 
       const analysisId = uuid();
       await analysesStore.put({
         id: analysisId,
-        gameId,
-        title: focusAreas.length ? focusAreas.join(', ') : 'General review',
+        gameId: gameToSave.id,
+        title: analysisLabel.trim() || (focusAreas.length ? focusAreas.join(', ') : 'General review'),
         focusAreas,
         customFocusNotes: customFocus.trim() || undefined,
         statThresholds,
@@ -125,7 +141,7 @@ export default function NewAnalysis() {
         result,
       });
 
-      navigate(`/games/${gameId}`);
+      navigate(`/games/${gameToSave.id}`);
     } catch (err) {
       setRunError(err instanceof Error ? err.message : 'Analysis failed. Check your API key and try again.');
     } finally {
@@ -133,7 +149,14 @@ export default function NewAnalysis() {
     }
   }
 
-  const canProceedStep1 = title.trim().length > 0 && yourTeamName.trim().length > 0;
+  const canProceedStep1 = existingGame
+    ? true
+    : title.trim().length > 0 && yourTeamName.trim().length > 0;
+
+  const effectiveTitle = existingGame ? existingGame.title : title;
+  const effectiveTeam = existingGame ? existingGame.yourTeamName : yourTeamName;
+  const effectiveOpponent = existingGame ? existingGame.opponent : opponent;
+  const effectiveDate = existingGame ? existingGame.date : date;
   const canProceedStep2 = frames.length > 0 && !extracting;
 
   const videoUrl = useMemo(() => (file ? URL.createObjectURL(file) : ''), [file]);
@@ -156,35 +179,81 @@ export default function NewAnalysis() {
         </Card>
       )}
 
-      {step === 1 && (
+      {step === 1 && !existingGameLoaded && <Card>Loading game…</Card>}
+
+      {step === 1 && existingGameLoaded && existingGameId && !existingGame && (
+        <Card className="border-amber-700/60 bg-amber-950/30 text-amber-100 text-sm space-y-2">
+          <p>Couldn't find that game — it may have been deleted. Starting a fresh one instead.</p>
+          <Link to="/new" className="underline">
+            Go to a clean "New analysis"
+          </Link>
+        </Card>
+      )}
+
+      {step === 1 && existingGameLoaded && (existingGame || !existingGameId) && (
         <Card className="space-y-4">
-          <h2 className="font-medium text-emerald-50">Game info</h2>
-          <div className="grid sm:grid-cols-2 gap-3">
+          {existingGame ? (
             <div>
-              <label className="block text-xs text-emerald-200/60 mb-1">Title</label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Week 4 vs Hawks" />
+              <h2 className="font-medium text-emerald-50">Adding an analysis to an existing game</h2>
+              <div className="mt-2 rounded-md bg-[#0b1512] border border-emerald-900/50 px-3 py-2 text-sm text-emerald-100">
+                <p className="font-medium">
+                  {existingGame.title}
+                  {existingGame.opponent && <span className="text-emerald-200/50"> vs {existingGame.opponent}</span>}
+                </p>
+                <p className="text-xs text-emerald-200/50 mt-0.5">
+                  {existingGame.yourTeamName} · {new Date(existingGame.date).toLocaleDateString()}
+                </p>
+              </div>
+              <Link to="/new" className="text-xs text-emerald-300 hover:underline mt-2 inline-block">
+                Not the right game? Start a brand new game instead
+              </Link>
             </div>
+          ) : (
             <div>
-              <label className="block text-xs text-emerald-200/60 mb-1">Your team</label>
-              <Input
-                value={yourTeamName}
-                onChange={(e) => {
-                  setYourTeamNameState(e.target.value);
-                  setYourTeamName(e.target.value.trim());
-                }}
-                placeholder="e.g. Eagles, or 'White jerseys'"
-                required
-              />
+              <h2 className="font-medium text-emerald-50">Game info</h2>
+              <div className="grid sm:grid-cols-2 gap-3 mt-3">
+                <div>
+                  <label className="block text-xs text-emerald-200/60 mb-1">Title</label>
+                  <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Week 4 vs Hawks" />
+                </div>
+                <div>
+                  <label className="block text-xs text-emerald-200/60 mb-1">Your team</label>
+                  <Input
+                    value={yourTeamName}
+                    onChange={(e) => {
+                      setYourTeamNameState(e.target.value);
+                      setYourTeamName(e.target.value.trim());
+                    }}
+                    placeholder="e.g. Eagles, or 'White jerseys'"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-emerald-200/60 mb-1">Opponent (optional)</label>
+                  <Input value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="Hawks" />
+                </div>
+                <div>
+                  <label className="block text-xs text-emerald-200/60 mb-1">Date</label>
+                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs text-emerald-200/60 mb-1">Opponent (optional)</label>
-              <Input value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="Hawks" />
-            </div>
-            <div>
-              <label className="block text-xs text-emerald-200/60 mb-1">Date</label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </div>
+          )}
+
+          <div>
+            <label className="block text-xs text-emerald-200/60 mb-1">Analysis label (optional)</label>
+            <Input
+              value={analysisLabel}
+              onChange={(e) => setAnalysisLabel(e.target.value)}
+              placeholder={existingGame ? "e.g. Q1, 2nd half, Red zone plays" : 'e.g. Full game'}
+            />
+            <p className="text-[11px] text-emerald-200/40 mt-1">
+              {existingGame
+                ? 'Labels each analysis run so you can tell segments of this game apart (e.g. "Q1", "Q2"). Their stats get combined automatically on the game page.'
+                : 'Leave blank to auto-name this analysis from its focus areas.'}
+            </p>
           </div>
+
           <p className="text-xs text-emerald-200/40">
             The roster you've saved is treated as "your team" — all coaching notes and player stats focus on them,
             while team-level stats (passing, play direction, blitz rate) are tracked for both sides independently.
@@ -392,13 +461,19 @@ export default function NewAnalysis() {
           <h2 className="font-medium text-emerald-50">Review &amp; run analysis</h2>
           <ul className="text-sm text-emerald-200/80 space-y-1">
             <li>
-              <strong className="text-emerald-50">Game:</strong> {title}
-              {opponent ? ` vs ${opponent}` : ''} — {date}
+              <strong className="text-emerald-50">Game:</strong> {effectiveTitle}
+              {effectiveOpponent ? ` vs ${effectiveOpponent}` : ''} — {effectiveDate}
+              {existingGame && <span className="text-emerald-200/40"> (existing game)</span>}
             </li>
+            {analysisLabel.trim() && (
+              <li>
+                <strong className="text-emerald-50">Analysis label:</strong> {analysisLabel.trim()}
+              </li>
+            )}
             <li>
-              <strong className="text-emerald-50">Your team:</strong> {yourTeamName}
-              {opponent ? ` (opponent: ${opponent})` : ''} — notes &amp; player stats focus here; team stats are
-              recorded for both sides.
+              <strong className="text-emerald-50">Your team:</strong> {effectiveTeam}
+              {effectiveOpponent ? ` (opponent: ${effectiveOpponent})` : ''} — notes &amp; player stats focus here;
+              team stats are recorded for both sides.
             </li>
             <li>
               <strong className="text-emerald-50">Frames:</strong> {frames.length} sampled
