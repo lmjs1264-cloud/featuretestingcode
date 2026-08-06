@@ -41,6 +41,60 @@ const playerStatsSchema = {
   ],
 };
 
+function singleTeamStatsSchema(teamLabel: string) {
+  return {
+    type: 'object',
+    description: `${teamLabel}'s own statistical breakdown estimated from the sampled frames — this team's passing/direction tendencies on their offensive snaps, and this team's blitz rate on their defensive snaps.`,
+    properties: {
+      passing: {
+        type: 'object',
+        properties: {
+          shortPassPercent: { type: 'number', description: `% of ${teamLabel}'s pass attempts that were short.` },
+          mediumPassPercent: { type: 'number', description: `% of ${teamLabel}'s pass attempts that were medium.` },
+          deepPassPercent: { type: 'number', description: `% of ${teamLabel}'s pass attempts that were deep.` },
+          completionPercent: { type: 'number', description: `${teamLabel}'s overall pass completion % across all depths.` },
+          yardsPerShortPass: { type: 'number', description: `${teamLabel}'s average yards gained per short pass attempt.` },
+          yardsPerMediumPass: { type: 'number', description: `${teamLabel}'s average yards gained per medium pass attempt.` },
+          yardsPerDeepPass: { type: 'number', description: `${teamLabel}'s average yards gained per deep pass attempt.` },
+        },
+        required: [
+          'shortPassPercent',
+          'mediumPassPercent',
+          'deepPassPercent',
+          'completionPercent',
+          'yardsPerShortPass',
+          'yardsPerMediumPass',
+          'yardsPerDeepPass',
+        ],
+      },
+      playDirection: {
+        type: 'object',
+        properties: {
+          leftPercent: { type: 'number', description: `% of ${teamLabel}'s offensive plays run to their left.` },
+          middlePercent: { type: 'number', description: `% of ${teamLabel}'s offensive plays run up the middle.` },
+          rightPercent: { type: 'number', description: `% of ${teamLabel}'s offensive plays run to their right.` },
+        },
+        required: ['leftPercent', 'middlePercent', 'rightPercent'],
+      },
+      defense: {
+        type: 'object',
+        properties: {
+          blitzPercent: {
+            type: 'number',
+            description: `% of ${teamLabel}'s defensive plays where 3 or more of their defenders rushed the QB.`,
+          },
+        },
+        required: ['blitzPercent'],
+      },
+      methodologyNote: {
+        type: 'string',
+        description: `One or two sentences on how confident ${teamLabel}'s stats are given the number/spacing of sampled frames, and roughly how many of their distinct plays you could actually observe.`,
+      },
+    },
+    required: ['passing', 'playDirection', 'defense', 'methodologyNote'],
+  };
+}
+
 const ANALYSIS_TOOL = {
   name: 'submit_film_analysis',
   description:
@@ -69,55 +123,13 @@ const ANALYSIS_TOOL = {
       },
       teamStats: {
         type: 'object',
-        description: 'Team-level statistical breakdown estimated from the sampled frames.',
+        description:
+          'Statistical breakdown recorded independently for BOTH teams, regardless of which team the qualitative notes below focus on.',
         properties: {
-          passing: {
-            type: 'object',
-            properties: {
-              shortPassPercent: { type: 'number', description: '% of pass attempts that were short.' },
-              mediumPassPercent: { type: 'number', description: '% of pass attempts that were medium.' },
-              deepPassPercent: { type: 'number', description: '% of pass attempts that were deep.' },
-              completionPercent: { type: 'number', description: 'Overall pass completion % across all depths.' },
-              yardsPerShortPass: { type: 'number', description: 'Average yards gained per short pass attempt.' },
-              yardsPerMediumPass: { type: 'number', description: 'Average yards gained per medium pass attempt.' },
-              yardsPerDeepPass: { type: 'number', description: 'Average yards gained per deep pass attempt.' },
-            },
-            required: [
-              'shortPassPercent',
-              'mediumPassPercent',
-              'deepPassPercent',
-              'completionPercent',
-              'yardsPerShortPass',
-              'yardsPerMediumPass',
-              'yardsPerDeepPass',
-            ],
-          },
-          playDirection: {
-            type: 'object',
-            properties: {
-              leftPercent: { type: 'number', description: '% of offensive plays run to the offense\'s left.' },
-              middlePercent: { type: 'number', description: '% of offensive plays run up the middle.' },
-              rightPercent: { type: 'number', description: '% of offensive plays run to the offense\'s right.' },
-            },
-            required: ['leftPercent', 'middlePercent', 'rightPercent'],
-          },
-          defense: {
-            type: 'object',
-            properties: {
-              blitzPercent: {
-                type: 'number',
-                description: '% of defensive plays where 3 or more defenders rushed the QB.',
-              },
-            },
-            required: ['blitzPercent'],
-          },
-          methodologyNote: {
-            type: 'string',
-            description:
-              'One or two sentences on how confident these stats are given the number/spacing of sampled frames, and roughly how many distinct plays you could actually observe.',
-          },
+          yourTeam: singleTeamStatsSchema('the user\'s team'),
+          opponent: singleTeamStatsSchema('the opposing team'),
         },
-        required: ['passing', 'playDirection', 'defense', 'methodologyNote'],
+        required: ['yourTeam', 'opponent'],
       },
       focusAreaFindings: {
         type: 'array',
@@ -165,10 +177,17 @@ export interface AnalyzeParams {
   customFocusNotes?: string;
   gameContext?: string;
   statThresholds: StatThresholds;
+  yourTeamName: string;
+  opponentName?: string;
 }
 
-function buildSystemPrompt(thresholds: StatThresholds): string {
-  return `You are an experienced flag football coach and film analyst helping a youth/adult flag football team improve. You are shown a sequence of still frames sampled from a single game's video, in chronological order with timestamps.
+function buildSystemPrompt(thresholds: StatThresholds, yourTeamName: string, opponentName: string): string {
+  return `You are an experienced flag football coach and film analyst. You work for and report to "${yourTeamName}". You are shown a sequence of still frames sampled from a single game's video (${yourTeamName} vs ${opponentName}), in chronological order with timestamps.
+
+Which team is "your team":
+- The provided roster belongs exclusively to ${yourTeamName} — that is the team you are coaching and reporting on. The other team in the frames (by uniform/jersey color) is ${opponentName}, the opponent.
+- ALL qualitative coaching content — teamSummary (strengths/weaknesses/key moments), focusAreaFindings, playerNotes, and nextPracticeFocus — must be about ${yourTeamName} ONLY. Do not create playerNotes entries for opposing players, and do not phrase strengths/weaknesses/recommendations around the opponent's roster. It is fine to reference the opponent's scheme/tendencies briefly where relevant context for coaching ${yourTeamName} (e.g. "their frequent blitz forced quick throws"), but the subjects being coached are always ${yourTeamName}'s players.
+- teamStats is the one exception: record it independently and evenhandedly for BOTH teams (teamStats.yourTeam and teamStats.opponent), since raw statistical tendencies for the opponent are useful scouting info even though individual opponent players aren't being coached.
 
 Field & stat calibration:
 - This is flag football on a 60-yard field (NOT a 100-yard field) — calibrate all yardage and distance estimates accordingly.
@@ -177,13 +196,13 @@ Field & stat calibration:
 - Sacks and tackles in this context mean the flag-pull equivalent (pulling the QB behind the line of scrimmage counts as a sack; pulling the ball carrier's flag counts as a tackle).
 
 Ground rules:
-- Only report what you can actually observe in the frames. Do not invent stats, scores, or events you cannot see. All statistics — team and individual — are necessarily estimates derived from a limited number of sampled still frames, not a full play-by-play record. Be honest about this in the methodologyNote field, and lean conservative rather than inventing precise-looking numbers you can't support.
-- Identify players by jersey number when it is legibly visible in a frame. If you cannot confidently read a jersey number, describe the player by position/role/location on the field instead of guessing an identity.
+- Only report what you can actually observe in the frames. Do not invent stats, scores, or events you cannot see. All statistics — team and individual, for both teams — are necessarily estimates derived from a limited number of sampled still frames, not a full play-by-play record. Be honest about this in each methodologyNote field, and lean conservative rather than inventing precise-looking numbers you can't support.
+- Identify ${yourTeamName}'s players by jersey number when it is legibly visible in a frame. If you cannot confidently read a jersey number, describe the player by position/role/location on the field instead of guessing an identity.
 - Cross-reference legible jersey numbers against the provided roster to use player names when possible, but never assert a name you aren't reasonably confident in from a visible number.
 - For every player you create a playerNotes entry for, fill in the stats object using only what you actually witnessed in the sampled frames; use 0 for categories you didn't observe for that player rather than omitting them.
 - Be specific and actionable. Prefer concrete coaching cues ("get hands up earlier on the rush") over vague praise/criticism.
-- Weigh the user's requested focus areas most heavily, but still flag anything else important you notice (safety, effort, discipline).
-- Keep tone constructive and encouraging, appropriate for feedback that will be shared with players and parents.
+- Weigh the user's requested focus areas most heavily, but still flag anything else important you notice (safety, effort, discipline) about ${yourTeamName}.
+- Keep tone constructive and encouraging, appropriate for feedback that will be shared with ${yourTeamName}'s players and parents.
 - You must respond only by calling the submit_film_analysis tool.`;
 }
 
@@ -200,14 +219,17 @@ function buildUserText(params: AnalyzeParams): string {
 
   return `Game context: ${params.gameContext || 'N/A'}
 
-Team roster (jersey # / name / position):
+Your team (the team all coaching notes/player notes/stats should focus on): ${params.yourTeamName}
+Opponent: ${params.opponentName || 'the opposing team seen in the film'}
+
+Team roster (jersey # / name / position) — this is ${params.yourTeamName}'s roster:
 ${rosterText}
 
 Requested focus areas for this review:
 ${focusText}
 ${params.customFocusNotes ? `\nAdditional notes from the coach: ${params.customFocusNotes}` : ''}
 
-Below are ${params.frames.length} frames sampled chronologically from the game film, each labeled with its timestamp. Review them as a sequence and produce your analysis by calling submit_film_analysis. Cover team-level strengths/weaknesses, team-level passing/direction/blitz statistics, findings for each requested focus area, individual player notes and stat lines for anyone identifiable, and a prioritized list of next-practice focus items.`;
+Below are ${params.frames.length} frames sampled chronologically from the game film, each labeled with its timestamp. Review them as a sequence and produce your analysis by calling submit_film_analysis. Cover ${params.yourTeamName}'s team-level strengths/weaknesses, independent team stats for both ${params.yourTeamName} and ${params.opponentName || 'the opponent'}, findings for each requested focus area, individual player notes and stat lines for ${params.yourTeamName}'s identifiable players, and a prioritized list of next-practice focus items for ${params.yourTeamName}.`;
 }
 
 export async function analyzeFilm(params: AnalyzeParams): Promise<AnalysisResult> {
@@ -233,7 +255,7 @@ export async function analyzeFilm(params: AnalyzeParams): Promise<AnalysisResult
   const message = await client.messages.create({
     model: params.model,
     max_tokens: 8192,
-    system: buildSystemPrompt(params.statThresholds),
+    system: buildSystemPrompt(params.statThresholds, params.yourTeamName, params.opponentName || 'the opposing team'),
     tools: [ANALYSIS_TOOL],
     tool_choice: { type: 'tool', name: ANALYSIS_TOOL.name },
     messages: [

@@ -1,16 +1,26 @@
 import { useState } from 'react';
 import { Card, Button, Input, Select } from '../components/ui';
-import { AVAILABLE_MODELS, getApiKey, getModel, setApiKey, setModel } from '../state/settings';
+import {
+  AVAILABLE_MODELS,
+  getApiKey,
+  getModel,
+  getYourTeamName,
+  setApiKey,
+  setModel,
+  setYourTeamName,
+} from '../state/settings';
 
 export default function Settings() {
   const [key, setKey] = useState(getApiKey());
   const [model, setModelState] = useState(getModel());
+  const [teamName, setTeamName] = useState(getYourTeamName());
   const [saved, setSaved] = useState(false);
   const [showKey, setShowKey] = useState(false);
 
   function save() {
     setApiKey(key.trim());
     setModel(model);
+    setYourTeamName(teamName.trim());
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -52,6 +62,20 @@ export default function Settings() {
               console.anthropic.com
             </a>
             .
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-emerald-100 mb-1">Default "your team" name</label>
+          <Input
+            value={teamName}
+            onChange={(e) => setTeamName(e.target.value)}
+            placeholder="e.g. Eagles, or 'White jerseys'"
+          />
+          <p className="text-xs text-emerald-200/40 mt-1">
+            Pre-fills the "Your team" field when starting a new analysis. Your saved roster is always treated as
+            this team — coaching notes and player stats focus on them, while team-level stats are tracked for both
+            sides.
           </p>
         </div>
 

@@ -10,6 +10,7 @@ export interface Player {
 export interface Game {
   id: string;
   title: string;
+  yourTeamName: string;
   opponent?: string;
   date: string;
   createdAt: number;
@@ -104,13 +105,18 @@ export interface TeamStats {
   methodologyNote: string;
 }
 
+export interface BothTeamsStats {
+  yourTeam: TeamStats;
+  opponent: TeamStats;
+}
+
 export interface AnalysisResult {
   teamSummary: {
     strengths: string[];
     weaknesses: string[];
     keyMoments: KeyMoment[];
   };
-  teamStats: TeamStats;
+  teamStats: BothTeamsStats;
   focusAreaFindings: FocusAreaFinding[];
   playerNotes: PlayerNote[];
   nextPracticeFocus: string[];

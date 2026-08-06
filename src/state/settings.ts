@@ -1,5 +1,6 @@
 const API_KEY_STORAGE = 'flag-film.anthropic-api-key';
 const MODEL_STORAGE = 'flag-film.model';
+const YOUR_TEAM_NAME_STORAGE = 'flag-film.your-team-name';
 
 export const DEFAULT_MODEL = 'claude-sonnet-5';
 
@@ -24,4 +25,13 @@ export function getModel(): string {
 
 export function setModel(model: string): void {
   localStorage.setItem(MODEL_STORAGE, model);
+}
+
+export function getYourTeamName(): string {
+  return localStorage.getItem(YOUR_TEAM_NAME_STORAGE) ?? '';
+}
+
+export function setYourTeamName(name: string): void {
+  if (name) localStorage.setItem(YOUR_TEAM_NAME_STORAGE, name);
+  else localStorage.removeItem(YOUR_TEAM_NAME_STORAGE);
 }

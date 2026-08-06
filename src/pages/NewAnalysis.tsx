@@ -5,7 +5,7 @@ import { Button, Card, Input, Textarea } from '../components/ui';
 import { analyzeFilm } from '../lib/analyze';
 import { extractFrames } from '../lib/frames';
 import { analysesStore, gamesStore, playersStore } from '../lib/db';
-import { getApiKey, getModel } from '../state/settings';
+import { getApiKey, getModel, getYourTeamName, setYourTeamName } from '../state/settings';
 import { DEFAULT_FOCUS_AREAS, DEFAULT_STAT_THRESHOLDS } from '../types';
 import type { Player, StatThresholds } from '../types';
 
@@ -17,6 +17,7 @@ export default function NewAnalysis() {
 
   // Step 1: game info
   const [title, setTitle] = useState('');
+  const [yourTeamName, setYourTeamNameState] = useState(() => getYourTeamName());
   const [opponent, setOpponent] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -97,11 +98,14 @@ export default function NewAnalysis() {
         customFocusNotes: customFocus.trim() || undefined,
         gameContext: `${title}${opponent ? ` vs ${opponent}` : ''} — ${date}`,
         statThresholds,
+        yourTeamName: yourTeamName.trim(),
+        opponentName: opponent.trim() || undefined,
       });
 
       await gamesStore.put({
         id: gameId,
         title: title.trim() || 'Untitled game',
+        yourTeamName: yourTeamName.trim(),
         opponent: opponent.trim() || undefined,
         date,
         createdAt: Date.now(),
@@ -129,7 +133,7 @@ export default function NewAnalysis() {
     }
   }
 
-  const canProceedStep1 = title.trim().length > 0;
+  const canProceedStep1 = title.trim().length > 0 && yourTeamName.trim().length > 0;
   const canProceedStep2 = frames.length > 0 && !extracting;
 
   const videoUrl = useMemo(() => (file ? URL.createObjectURL(file) : ''), [file]);
@@ -161,6 +165,18 @@ export default function NewAnalysis() {
               <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Week 4 vs Hawks" />
             </div>
             <div>
+              <label className="block text-xs text-emerald-200/60 mb-1">Your team</label>
+              <Input
+                value={yourTeamName}
+                onChange={(e) => {
+                  setYourTeamNameState(e.target.value);
+                  setYourTeamName(e.target.value.trim());
+                }}
+                placeholder="e.g. Eagles, or 'White jerseys'"
+                required
+              />
+            </div>
+            <div>
               <label className="block text-xs text-emerald-200/60 mb-1">Opponent (optional)</label>
               <Input value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="Hawks" />
             </div>
@@ -169,6 +185,10 @@ export default function NewAnalysis() {
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
           </div>
+          <p className="text-xs text-emerald-200/40">
+            The roster you've saved is treated as "your team" — all coaching notes and player stats focus on them,
+            while team-level stats (passing, play direction, blitz rate) are tracked for both sides independently.
+          </p>
           <div className="flex justify-end">
             <Button disabled={!canProceedStep1} onClick={() => setStep(2)}>
               Next: Upload film
@@ -374,6 +394,11 @@ export default function NewAnalysis() {
             <li>
               <strong className="text-emerald-50">Game:</strong> {title}
               {opponent ? ` vs ${opponent}` : ''} — {date}
+            </li>
+            <li>
+              <strong className="text-emerald-50">Your team:</strong> {yourTeamName}
+              {opponent ? ` (opponent: ${opponent})` : ''} — notes &amp; player stats focus here; team stats are
+              recorded for both sides.
             </li>
             <li>
               <strong className="text-emerald-50">Frames:</strong> {frames.length} sampled

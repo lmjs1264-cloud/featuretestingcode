@@ -1,4 +1,4 @@
-import type { Analysis } from '../types';
+import type { Analysis, Game, TeamStats } from '../types';
 import { Badge, Card } from './ui';
 import { nonZeroStats } from '../lib/stats';
 
@@ -27,6 +27,43 @@ function StatTile({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function TeamStatsPanel({ teamName, stats }: { teamName: string; stats: TeamStats }) {
+  return (
+    <div>
+      <p className="font-medium text-emerald-100 mb-2">{teamName}</p>
+
+      <p className="text-xs uppercase tracking-wide text-emerald-200/50 mb-2">Passing</p>
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        <StatTile label="Completion %" value={`${stats.passing.completionPercent}%`} />
+        <StatTile label="Short pass mix" value={`${stats.passing.shortPassPercent}%`} />
+        <StatTile label="Medium pass mix" value={`${stats.passing.mediumPassPercent}%`} />
+        <StatTile label="Deep pass mix" value={`${stats.passing.deepPassPercent}%`} />
+        <StatTile label="Yds / short pass" value={stats.passing.yardsPerShortPass} />
+        <StatTile label="Yds / medium pass" value={stats.passing.yardsPerMediumPass} />
+        <StatTile label="Yds / deep pass" value={stats.passing.yardsPerDeepPass} />
+      </div>
+
+      <p className="text-xs uppercase tracking-wide text-emerald-200/50 mb-2">Play direction</p>
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <StatTile label="Left %" value={`${stats.playDirection.leftPercent}%`} />
+        <StatTile label="Middle %" value={`${stats.playDirection.middlePercent}%`} />
+        <StatTile label="Right %" value={`${stats.playDirection.rightPercent}%`} />
+      </div>
+
+      <p className="text-xs uppercase tracking-wide text-emerald-200/50 mb-2">Defense</p>
+      <div className="grid grid-cols-1 gap-2 mb-3">
+        <StatTile label="Blitz rate (3+ rushers)" value={`${stats.defense.blitzPercent}%`} />
+      </div>
+
+      {stats.methodologyNote && (
+        <p className="text-xs text-emerald-200/40 italic mt-2 border-t border-emerald-900/50 pt-2">
+          {stats.methodologyNote}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PlayerStatChips({ stats }: { stats: Analysis['result']['playerNotes'][number]['stats'] }) {
   const chips = nonZeroStats(stats);
   if (chips.length === 0) return null;
@@ -44,8 +81,10 @@ function PlayerStatChips({ stats }: { stats: Analysis['result']['playerNotes'][n
   );
 }
 
-export default function AnalysisResultView({ analysis }: { analysis: Analysis }) {
+export default function AnalysisResultView({ analysis, game }: { analysis: Analysis; game?: Game }) {
   const { result } = analysis;
+  const yourTeamName = game?.yourTeamName || 'Your team';
+  const opponentName = game?.opponent || 'Opponent';
 
   return (
     <div className="space-y-5">
@@ -59,13 +98,18 @@ export default function AnalysisResultView({ analysis }: { analysis: Analysis })
         </span>
       </div>
 
+      <p className="text-xs text-emerald-200/40 -mb-2">
+        Coaching notes below focus on <span className="text-emerald-200/70">{yourTeamName}</span>. Team stats are
+        tracked independently for both sides.
+      </p>
+
       <div className="grid sm:grid-cols-2 gap-4">
         <Card>
-          <h3 className="font-medium text-emerald-50 mb-2">Team strengths</h3>
+          <h3 className="font-medium text-emerald-50 mb-2">{yourTeamName} strengths</h3>
           <List items={result.teamSummary?.strengths ?? []} tone="good" />
         </Card>
         <Card>
-          <h3 className="font-medium text-emerald-50 mb-2">Team weaknesses</h3>
+          <h3 className="font-medium text-emerald-50 mb-2">{yourTeamName} weaknesses</h3>
           <List items={result.teamSummary?.weaknesses ?? []} tone="bad" />
         </Card>
       </div>
@@ -85,40 +129,17 @@ export default function AnalysisResultView({ analysis }: { analysis: Analysis })
       )}
 
       {result.teamStats && (
-        <Card>
-          <div className="flex items-baseline justify-between gap-2 mb-3">
-            <h3 className="font-medium text-emerald-50">Team stats (estimated)</h3>
+        <div>
+          <h3 className="font-medium text-emerald-50 mb-2">Team stats (estimated) — both sides</h3>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Card>
+              <TeamStatsPanel teamName={yourTeamName} stats={result.teamStats.yourTeam} />
+            </Card>
+            <Card>
+              <TeamStatsPanel teamName={opponentName} stats={result.teamStats.opponent} />
+            </Card>
           </div>
-
-          <p className="text-xs uppercase tracking-wide text-emerald-200/50 mb-2">Passing</p>
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-4">
-            <StatTile label="Completion %" value={`${result.teamStats.passing.completionPercent}%`} />
-            <StatTile label="Short pass mix" value={`${result.teamStats.passing.shortPassPercent}%`} />
-            <StatTile label="Medium pass mix" value={`${result.teamStats.passing.mediumPassPercent}%`} />
-            <StatTile label="Deep pass mix" value={`${result.teamStats.passing.deepPassPercent}%`} />
-            <StatTile label="Yds / short pass" value={result.teamStats.passing.yardsPerShortPass} />
-            <StatTile label="Yds / medium pass" value={result.teamStats.passing.yardsPerMediumPass} />
-            <StatTile label="Yds / deep pass" value={result.teamStats.passing.yardsPerDeepPass} />
-          </div>
-
-          <p className="text-xs uppercase tracking-wide text-emerald-200/50 mb-2">Play direction</p>
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            <StatTile label="Left %" value={`${result.teamStats.playDirection.leftPercent}%`} />
-            <StatTile label="Middle %" value={`${result.teamStats.playDirection.middlePercent}%`} />
-            <StatTile label="Right %" value={`${result.teamStats.playDirection.rightPercent}%`} />
-          </div>
-
-          <p className="text-xs uppercase tracking-wide text-emerald-200/50 mb-2">Defense</p>
-          <div className="grid grid-cols-3 gap-2 mb-3">
-            <StatTile label="Blitz rate (3+ rushers)" value={`${result.teamStats.defense.blitzPercent}%`} />
-          </div>
-
-          {result.teamStats.methodologyNote && (
-            <p className="text-xs text-emerald-200/40 italic mt-2 border-t border-emerald-900/50 pt-2">
-              {result.teamStats.methodologyNote}
-            </p>
-          )}
-        </Card>
+        </div>
       )}
 
       {result.focusAreaFindings?.length > 0 && (
@@ -144,7 +165,7 @@ export default function AnalysisResultView({ analysis }: { analysis: Analysis })
 
       {result.playerNotes?.length > 0 && (
         <div className="space-y-3">
-          <h3 className="font-medium text-emerald-50">Player notes</h3>
+          <h3 className="font-medium text-emerald-50">{yourTeamName} player notes</h3>
           <div className="grid sm:grid-cols-2 gap-3">
             {result.playerNotes.map((p, i) => (
               <Card key={i}>

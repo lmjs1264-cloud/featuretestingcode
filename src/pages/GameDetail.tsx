@@ -42,7 +42,9 @@ export default function GameDetail() {
             {game.title}
             {game.opponent && <span className="text-emerald-200/50 font-normal"> vs {game.opponent}</span>}
           </h1>
-          <p className="text-emerald-200/60 text-sm mt-1">{new Date(game.date).toLocaleDateString()}</p>
+          <p className="text-emerald-200/60 text-sm mt-1">
+            {game.yourTeamName} · {new Date(game.date).toLocaleDateString()}
+          </p>
         </div>
         <div className="flex gap-2">
           <Link to="/new">
@@ -77,7 +79,7 @@ export default function GameDetail() {
           )}
           {active && (
             <Card>
-              <AnalysisResultView analysis={active} />
+              <AnalysisResultView analysis={active} game={game} />
             </Card>
           )}
         </>
