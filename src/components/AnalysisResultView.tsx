@@ -55,6 +55,32 @@ function TeamStatsPanel({ teamName, stats }: { teamName: string; stats: TeamStat
         <StatTile label="Blitz rate (3+ rushers)" value={`${stats.defense.blitzPercent}%`} />
       </div>
 
+      {stats.defense.formationTendencies?.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[11px] text-emerald-200/50 mb-1.5">Coverage &amp; blitz by opponent formation</p>
+          <div className="space-y-1.5">
+            {stats.defense.formationTendencies.map((f, i) => (
+              <div key={i} className="rounded-md bg-[#0b1512] border border-emerald-900/50 px-3 py-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm text-emerald-100 font-medium">{f.formation}</span>
+                  <span className="text-[10px] text-emerald-200/40 whitespace-nowrap">
+                    {f.playsObserved} play{f.playsObserved === 1 ? '' : 's'} seen
+                  </span>
+                </div>
+                <div className="flex gap-3 mt-1 text-xs text-emerald-200/70">
+                  <span>
+                    Man coverage: <span className="text-emerald-300 font-semibold">{f.manCoveragePercent}%</span>
+                  </span>
+                  <span>
+                    Blitz: <span className="text-emerald-300 font-semibold">{f.blitzPercent}%</span>
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {stats.methodologyNote && (
         <p className="text-xs text-emerald-200/40 italic mt-2 border-t border-emerald-900/50 pt-2">
           {stats.methodologyNote}

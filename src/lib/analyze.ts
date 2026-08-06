@@ -83,8 +83,34 @@ function singleTeamStatsSchema(teamLabel: string) {
             type: 'number',
             description: `% of ${teamLabel}'s defensive plays where 3 or more of their defenders rushed the QB.`,
           },
+          formationTendencies: {
+            type: 'array',
+            description: `${teamLabel}'s defensive coverage and blitz tendencies broken down by the opposing offense's formation/personnel grouping on that play (e.g. "trips — 3 receivers to one side", "RB offset next to QB", "empty backfield / 4 receivers spread", "tight bunch formation"). Only include formations you actually saw the opponent line up in.`,
+            items: {
+              type: 'object',
+              properties: {
+                formation: {
+                  type: 'string',
+                  description: 'Short label for the offensive formation/personnel grouping this row is conditioned on.',
+                },
+                playsObserved: {
+                  type: 'integer',
+                  description: 'How many plays you actually saw the opponent line up in this formation.',
+                },
+                manCoveragePercent: {
+                  type: 'number',
+                  description: `% of pass plays against this formation where ${teamLabel} played man-to-man coverage (vs. zone/other).`,
+                },
+                blitzPercent: {
+                  type: 'number',
+                  description: `% of plays against this formation where ${teamLabel} blitzed (3+ rushers).`,
+                },
+              },
+              required: ['formation', 'playsObserved', 'manCoveragePercent', 'blitzPercent'],
+            },
+          },
         },
-        required: ['blitzPercent'],
+        required: ['blitzPercent', 'formationTendencies'],
       },
       methodologyNote: {
         type: 'string',
@@ -194,6 +220,7 @@ Field & stat calibration:
 - Classify each pass attempt by depth of target past the line of scrimmage: short = 0-${thresholds.shortMaxYards} yards, medium = ${thresholds.shortMaxYards + 1}-${thresholds.mediumMaxYards} yards, deep = ${thresholds.mediumMaxYards + 1}+ yards.
 - A "blitz" means 3 or more defenders rushing the QB on a given play.
 - Sacks and tackles in this context mean the flag-pull equivalent (pulling the QB behind the line of scrimmage counts as a sack; pulling the ball carrier's flag counts as a tackle).
+- For each team's defense.formationTendencies, condition on the OPPOSING offense's formation/personnel grouping for that play (e.g. "three receivers to one side", "RB lined up next to QB", "empty backfield") and report, for plays you saw against that formation: how many plays you observed with it, what % of those were played with man-to-man coverage, and what % drew a blitz. Example of the kind of statement this produces: "Defense played man coverage on 42% of pass plays where the offense had three receivers to one side" or "Defense blitzed on 32% of plays where the offense had a running back in next to the QB." Only report formations you actually saw more than once if possible; keep the list short (the handful of formations that actually recurred) rather than inventing a formation you only glimpsed once.
 
 Ground rules:
 - Only report what you can actually observe in the frames. Do not invent stats, scores, or events you cannot see. All statistics — team and individual, for both teams — are necessarily estimates derived from a limited number of sampled still frames, not a full play-by-play record. Be honest about this in each methodologyNote field, and lean conservative rather than inventing precise-looking numbers you can't support.
@@ -254,7 +281,7 @@ export async function analyzeFilm(params: AnalyzeParams): Promise<AnalysisResult
 
   const message = await client.messages.create({
     model: params.model,
-    max_tokens: 8192,
+    max_tokens: 10000,
     system: buildSystemPrompt(params.statThresholds, params.yourTeamName, params.opponentName || 'the opposing team'),
     tools: [ANALYSIS_TOOL],
     tool_choice: { type: 'tool', name: ANALYSIS_TOOL.name },

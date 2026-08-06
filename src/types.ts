@@ -94,8 +94,16 @@ export interface TeamPlayDirectionStats {
   rightPercent: number;
 }
 
+export interface FormationTendency {
+  formation: string;
+  playsObserved: number;
+  manCoveragePercent: number;
+  blitzPercent: number;
+}
+
 export interface TeamDefenseStats {
   blitzPercent: number;
+  formationTendencies: FormationTendency[];
 }
 
 export interface TeamStats {
