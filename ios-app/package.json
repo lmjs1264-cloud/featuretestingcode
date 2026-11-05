@@ -1,0 +1,20 @@
+{
+  "name": "glymdot-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "iPhone and Android app shell for glymdot.com with phone contacts access",
+  "scripts": {
+    "sync": "cap sync",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor-community/contacts": "^8.0.0",
+    "@capacitor/core": "^8.6.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/ios": "^8.6.0"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "appId": "com.glymdot.app",
+  "appName": "Glymdot",
+  "webDir": "www",
+  "server": {
+    "url": "https://glymdot.com",
+    "errorPath": "index.html",
+    "allowNavigation": ["glymdot.com", "*.glymdot.com", "*.base44.com", "*.base44.app"]
+  },
+  "ios": { "contentInset": "automatic" }
+}
