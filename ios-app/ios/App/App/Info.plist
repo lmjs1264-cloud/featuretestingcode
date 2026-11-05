@@ -68,5 +68,11 @@
 	<true/>
 	<key>NSContactsUsageDescription</key>
 	<string>glym opens your contacts so you can choose people to add to glym. Your phone’s contacts are never changed.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>glym uses your microphone to record voice notes about the people you add.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>glym uses your camera to take a photo of a business card so it can fill in the contact for you.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>glym lets you choose a photo, like a business card, to fill in a contact for you.</string>
 </dict>
 </plist>
