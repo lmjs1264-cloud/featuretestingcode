@@ -1,0 +1,258 @@
+I'm adding Apple / Google in-app purchases for the iPhone and Android app. Stripe stays exactly as it is on the website, but inside the app Stripe must NOT appear (Apple and Google rules). Please do exactly this:
+
+1. Create lib/inAppPurchases.js with FILE 1 below, exactly as written.
+2. Create components/AppStorePaywall.jsx with FILE 2 below, exactly as written.
+3. Create a backend function named syncAppStorePurchase with FILE 3 below. If your other backend functions import the Base44 SDK with a version number (for example npm:@base44/sdk@x.y.z), use that same import line. Otherwise keep the code exactly as written.
+4. Add two fields to the User entity: app_store_premium_until (text) and app_store_product (text).
+5. Wherever the app shows Stripe pricing, checkout, or "upgrade"/"subscribe" buttons: if isAppStoreBuild() from lib/inAppPurchases.js is true, show <AppStorePaywall userId={current user's id} onPaid={...} termsUrl="https://glymdot.com/terms" privacyUrl="https://glymdot.com/privacy" /> instead, and hide every Stripe button, link and price. If it's false (the website), keep showing Stripe exactly as today.
+6. onPaid should call the syncAppStorePurchase backend function, then reload the current user so the paid features unlock.
+7. When the app starts and a user is logged in, and isAppStoreBuild() is true, call syncAppStorePurchase once in the background (this picks up renewals and cancellations).
+8. Wherever the app checks whether someone has paid, make it: (the existing Stripe check) OR isAppStorePremium(user) from lib/inAppPurchases.js. This must work on the website too, so someone who paid in the app gets paid features on glymdot.com.
+9. If the terms or privacy pages don't exist yet, tell me instead of making them up.
+10. Don't add npm packages to the frontend and don't change the Stripe setup.
+
+===== FILE 1: lib/inAppPurchases.js =====
+// inAppPurchases.js — put in lib/ in Base44.
+// Apple / Google in-app purchases through RevenueCat. Only does anything
+// inside the glym iPhone/Android app; on the website keep using Stripe.
+// No npm packages: the app provides window.Capacitor.Plugins.Purchases.
+
+// ---- fill these in from RevenueCat (Project settings > API keys) ----
+// These are PUBLIC keys (they start with appl_ and goog_), safe to keep here.
+export const REVENUECAT_IOS_KEY = "appl_REPLACE_ME";
+export const REVENUECAT_ANDROID_KEY = "goog_REPLACE_ME";
+// The entitlement you create in RevenueCat that means "this person has paid".
+export const ENTITLEMENT_ID = "premium";
+
+const plugin = () => window?.Capacitor?.Plugins?.Purchases;
+const platform = () => window?.Capacitor?.getPlatform?.() || "web";
+
+/** True inside the iPhone/Android app, where Stripe must not be shown. */
+export function isAppStoreBuild() {
+  return !!(window?.Capacitor?.isNativePlatform?.() && plugin());
+}
+
+let configuredFor = null;
+
+/** Call once you know who is logged in. userId = the Base44 user's id. */
+export async function setupPurchases(userId) {
+  if (!isAppStoreBuild()) return;
+  if (!userId) throw new Error("Log in before buying.");
+  if (configuredFor === userId) return;
+  const { isConfigured } = await plugin().isConfigured();
+  if (!isConfigured) {
+    const apiKey = platform() === "ios" ? REVENUECAT_IOS_KEY : REVENUECAT_ANDROID_KEY;
+    await plugin().configure({ apiKey, appUserID: String(userId) });
+  } else {
+    await plugin().logIn({ appUserID: String(userId) });
+  }
+  configuredFor = userId;
+}
+
+export function hasPaid(customerInfo) {
+  return !!customerInfo?.entitlements?.active?.[ENTITLEMENT_ID];
+}
+
+const PERIODS = { P1W: "week", P1M: "month", P3M: "3 months", P6M: "6 months", P1Y: "year" };
+
+/** The plans set up in RevenueCat's current offering, with store prices. */
+export async function getPlans() {
+  const { current } = await plugin().getOfferings();
+  if (!current) return [];
+  return current.availablePackages.map((pkg) => {
+    const p = pkg.product || {};
+    const period = PERIODS[p.subscriptionPeriod] || "";
+    return {
+      id: pkg.identifier,
+      title: p.title || pkg.identifier,
+      description: p.description || "",
+      price: p.priceString || "",
+      period, // "" for one-time purchases
+      label: period ? `${p.priceString} / ${period}` : p.priceString,
+      raw: pkg,
+    };
+  });
+}
+
+const isCancel = (e) =>
+  e?.userCancelled === true || e?.data?.userCancelled === true ||
+  String(e?.code) === "1" || /cancel/i.test(String(e?.message || ""));
+
+/** Opens Apple's / Google's payment sheet. Returns { cancelled, paid }. */
+export async function buyPlan(plan) {
+  try {
+    const { customerInfo } = await plugin().purchasePackage({ aPackage: plan.raw });
+    return { cancelled: false, paid: hasPaid(customerInfo) };
+  } catch (e) {
+    if (isCancel(e)) return { cancelled: true, paid: false };
+    throw new Error(e?.message || "The purchase didn't go through. You haven't been charged.");
+  }
+}
+
+/** Apple requires a Restore Purchases button. Returns true if they have paid. */
+export async function restorePurchases() {
+  const { customerInfo } = await plugin().restorePurchases();
+  return hasPaid(customerInfo);
+}
+
+export async function checkPaid() {
+  const { customerInfo } = await plugin().getCustomerInfo();
+  return hasPaid(customerInfo);
+}
+
+/**
+ * Use this anywhere the app decides "has this person paid?", together with
+ * your existing Stripe check:  isPremium = stripeActive || isAppStorePremium(user)
+ * Works on the website too (it only reads the user record).
+ */
+export function isAppStorePremium(user) {
+  const until = user?.app_store_premium_until;
+  if (!until) return false;
+  if (until === "lifetime") return true;
+  return new Date(until).getTime() > Date.now();
+}
+
+===== FILE 2: components/AppStorePaywall.jsx =====
+// AppStorePaywall.jsx — put in components/ in Base44.
+// The upgrade screen shown INSIDE the iPhone/Android app instead of Stripe.
+//
+//   <AppStorePaywall
+//     userId={user.id}
+//     onPaid={async () => { await syncAppStorePurchase(); refresh the user; }}
+//     termsUrl="https://glymdot.com/terms" privacyUrl="https://glymdot.com/privacy" />
+
+import React, { useEffect, useState } from "react";
+import { setupPurchases, getPlans, buyPlan, restorePurchases } from "../lib/inAppPurchases";
+
+export default function AppStorePaywall({ userId, onPaid, termsUrl, privacyUrl }) {
+  const [plans, setPlans] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        await setupPurchases(userId);
+        const list = await getPlans();
+        if (alive) setPlans(list);
+      } catch (e) {
+        if (alive) { setPlans([]); setError(e?.message || "Couldn't load plans. Check your connection."); }
+      }
+    })();
+    return () => { alive = false; };
+  }, [userId]);
+
+  const run = async (key, fn) => {
+    setBusy(key); setError(""); setNote("");
+    try { await fn(); } catch (e) { setError(e?.message || String(e)); }
+    finally { setBusy(""); }
+  };
+
+  const buy = (plan) => run(plan.id, async () => {
+    const { cancelled, paid } = await buyPlan(plan);
+    if (cancelled) return;
+    if (!paid) throw new Error("Payment is still processing. Try Restore Purchases in a minute.");
+    await onPaid?.();
+  });
+
+  const restore = () => run("restore", async () => {
+    const paid = await restorePurchases();
+    if (paid) await onPaid?.();
+    else setNote("No purchases found for this Apple ID or Google account.");
+  });
+
+  return (
+    <div className="space-y-3">
+      {plans === null && <p className="text-sm text-gray-500">Loading plans…</p>}
+      {plans?.length === 0 && !error && (
+        <p className="text-sm text-gray-500">No plans are available right now.</p>
+      )}
+      {plans?.map((plan) => (
+        <button
+          key={plan.id}
+          type="button"
+          disabled={!!busy}
+          onClick={() => buy(plan)}
+          className="w-full rounded-xl border border-gray-300 dark:border-gray-600 p-4 text-left disabled:opacity-50"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium">{plan.title}</span>
+            <span className="font-semibold whitespace-nowrap">{busy === plan.id ? "…" : plan.label}</span>
+          </div>
+          {plan.description && <div className="mt-1 text-sm text-gray-500">{plan.description}</div>}
+        </button>
+      ))}
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {note && <p className="text-sm text-gray-600 dark:text-gray-300">{note}</p>}
+
+      <button type="button" onClick={restore} disabled={!!busy}
+        className="w-full py-2 text-sm underline disabled:opacity-50">
+        {busy === "restore" ? "Restoring…" : "Restore Purchases"}
+      </button>
+
+      {/* Apple requires this wording and these links on subscription screens. */}
+      <p className="text-xs text-gray-500 leading-relaxed">
+        Subscriptions renew automatically at the price shown until cancelled. Cancel at least
+        24 hours before the end of the current period in your Apple ID or Google Play
+        settings. Payment is charged to your Apple ID or Google Play account.{" "}
+        {termsUrl && <a href={termsUrl} className="underline">Terms of Use</a>}
+        {termsUrl && privacyUrl && " · "}
+        {privacyUrl && <a href={privacyUrl} className="underline">Privacy Policy</a>}
+      </p>
+    </div>
+  );
+}
+
+===== FILE 3: backend function syncAppStorePurchase =====
+// syncAppStorePurchase — a Base44 BACKEND function.
+// The app calls it after a purchase or restore, and each time the app opens.
+// It asks RevenueCat (not the phone) whether the logged-in user has paid,
+// so nobody can fake a purchase, then saves the result on their user record.
+//
+// Needs a Base44 secret named REVENUECAT_SECRET_KEY (RevenueCat > Project
+// settings > API keys > a SECRET key, starts with sk_). Never put it in the frontend.
+
+import { createClientFromRequest } from "npm:@base44/sdk";
+
+const ENTITLEMENT_ID = "premium"; // must match lib/inAppPurchases.js
+
+Deno.serve(async (req) => {
+  try {
+    const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
+    if (!user) return Response.json({ error: "Not logged in" }, { status: 401 });
+
+    const secret = Deno.env.get("REVENUECAT_SECRET_KEY");
+    if (!secret) return Response.json({ error: "REVENUECAT_SECRET_KEY is not set" }, { status: 500 });
+
+    const rc = await fetch(
+      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(user.id)}`,
+      { headers: { Authorization: `Bearer ${secret}`, Accept: "application/json" } },
+    );
+    if (!rc.ok) {
+      return Response.json({ error: `RevenueCat returned ${rc.status}` }, { status: 502 });
+    }
+    const { subscriber } = await rc.json();
+    const ent = subscriber?.entitlements?.[ENTITLEMENT_ID];
+
+    // expires_date is null for one-time (lifetime) purchases.
+    const lifetime = !!ent && ent.expires_date === null;
+    const expiresAt = ent?.expires_date ? new Date(ent.expires_date) : null;
+    const active = lifetime || (!!expiresAt && expiresAt.getTime() > Date.now());
+
+    // Save the expiry date, not a yes/no flag, so a lapsed subscription
+    // stops counting even if the person only uses the website afterwards.
+    const update = {
+      app_store_premium_until: lifetime ? "lifetime" : expiresAt ? expiresAt.toISOString() : null,
+      app_store_product: ent?.product_identifier || null,
+    };
+    await base44.asServiceRole.entities.User.update(user.id, update);
+
+    return Response.json({ premium: active, ...update });
+  } catch (e) {
+    return Response.json({ error: String(e?.message || e) }, { status: 500 });
+  }
+});
