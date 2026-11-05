@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Contacts Import Demo</title>
+  <style>body{font:16px system-ui,sans-serif;margin:24px;background:#fff;color:#111}
+  @media (prefers-color-scheme:dark){body{background:#111;color:#eee}}
+  button{padding:10px 16px;font:inherit;border-radius:10px}</style>
+</head>
+<body>
+  <button id="import-btn">Import</button>
+  <p id="mode"></p>
+  <pre id="out"></pre>
+  <script type="module">
+    import { attachContactsImport } from './contactsImportButton.js';
+    import { getMode } from './contactsService.js';
+    document.getElementById('mode').textContent = 'Mode: ' + getMode();
+    attachContactsImport(document.getElementById('import-btn'), {
+      onImport: (contacts) => {
+        document.getElementById('out').textContent = JSON.stringify(contacts, null, 2);
+      },
+    });
+  </script>
+</body>
+</html>
