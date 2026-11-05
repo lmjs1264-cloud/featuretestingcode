@@ -8,7 +8,7 @@
 
 import { createClientFromRequest } from "npm:@base44/sdk";
 
-const ENTITLEMENT_ID = "premium"; // must match lib/inAppPurchases.js
+const ENTITLEMENT_ID = "glym_premium"; // must match lib/inAppPurchases.js
 
 Deno.serve(async (req) => {
   try {

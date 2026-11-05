@@ -26,7 +26,7 @@ Website:   Stripe, unchanged.  Paid check = Stripe OR isAppStorePremium(user)
 ### 3. RevenueCat (free until $2,500/month in revenue)
 1. Create a project, and add an **App Store** app (upload the `.p8` key) and later a **Play Store** app.
 2. Products: import the products you made in step 1.
-3. Entitlements: create one called **`premium`** and attach all the products.
+3. Entitlements: create one called **`glym_premium`** and attach all the products.
 4. Offerings: make the **default** offering current and add packages (Monthly, Annual) using those products.
 5. API keys: copy the **public** iOS key (`appl_…`) and Android key (`goog_…`) into `lib/inAppPurchases.js`. Create a **secret** key (`sk_…`).
 

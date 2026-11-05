@@ -8,7 +8,7 @@
 export const REVENUECAT_IOS_KEY = "appl_REPLACE_ME";
 export const REVENUECAT_ANDROID_KEY = "goog_REPLACE_ME";
 // The entitlement you create in RevenueCat that means "this person has paid".
-export const ENTITLEMENT_ID = "premium";
+export const ENTITLEMENT_ID = "glym_premium";
 
 const plugin = () => window?.Capacitor?.Plugins?.Purchases;
 const platform = () => window?.Capacitor?.getPlatform?.() || "web";
