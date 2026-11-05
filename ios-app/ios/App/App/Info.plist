@@ -67,6 +67,6 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSContactsUsageDescription</key>
-	<string>Glymdot opens your contacts so you can choose people to add to Glymdot. Your phone's contacts are never changed.</string>
+	<string>glym opens your contacts so you can choose people to add to glym. Your phone’s contacts are never changed.</string>
 </dict>
 </plist>
