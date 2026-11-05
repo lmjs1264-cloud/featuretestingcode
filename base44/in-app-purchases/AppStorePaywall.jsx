@@ -4,12 +4,18 @@
 //   <AppStorePaywall
 //     userId={user.id}
 //     onPaid={async () => { await syncAppStorePurchase(); refresh the user; }}
-//     termsUrl="https://glymdot.com/terms" privacyUrl="https://glymdot.com/privacy" />
+//     termsUrl="https://glymdot.com/terms" privacyUrl="https://glymdot.com/privacy"
+//     hidePlanIds={foundingAvailable ? [] : ["founding"]}
+//     planBadges={{ founding: "Founding Member · 23 spots left" }} />
+//
+// hidePlanIds: RevenueCat package identifiers to leave out (e.g. "founding").
+// planBadges:  optional small label shown above a plan, by package identifier.
+// Plans appear in the offering's order, except "founding" is always listed first.
 
 import React, { useEffect, useState } from "react";
 import { setupPurchases, getPlans, buyPlan, restorePurchases } from "../lib/inAppPurchases";
 
-export default function AppStorePaywall({ userId, onPaid, termsUrl, privacyUrl }) {
+export default function AppStorePaywall({ userId, onPaid, termsUrl, privacyUrl, hidePlanIds = [], planBadges = {} }) {
   const [plans, setPlans] = useState(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -28,6 +34,10 @@ export default function AppStorePaywall({ userId, onPaid, termsUrl, privacyUrl }
     })();
     return () => { alive = false; };
   }, [userId]);
+
+  const visiblePlans = plans
+    ?.filter((p) => !hidePlanIds.includes(p.id))
+    .sort((a, b) => (b.id === "founding") - (a.id === "founding"));
 
   const run = async (key, fn) => {
     setBusy(key); setError(""); setNote("");
@@ -51,10 +61,10 @@ export default function AppStorePaywall({ userId, onPaid, termsUrl, privacyUrl }
   return (
     <div className="space-y-3">
       {plans === null && <p className="text-sm text-gray-500">Loading plans…</p>}
-      {plans?.length === 0 && !error && (
+      {visiblePlans?.length === 0 && !error && (
         <p className="text-sm text-gray-500">No plans are available right now.</p>
       )}
-      {plans?.map((plan) => (
+      {visiblePlans?.map((plan) => (
         <button
           key={plan.id}
           type="button"
@@ -62,6 +72,9 @@ export default function AppStorePaywall({ userId, onPaid, termsUrl, privacyUrl }
           onClick={() => buy(plan)}
           className="w-full rounded-xl border border-gray-300 dark:border-gray-600 p-4 text-left disabled:opacity-50"
         >
+          {planBadges[plan.id] && (
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-blue-600">{planBadges[plan.id]}</div>
+          )}
           <div className="flex items-center justify-between gap-3">
             <span className="font-medium">{plan.title}</span>
             <span className="font-semibold whitespace-nowrap">{busy === plan.id ? "…" : plan.label}</span>

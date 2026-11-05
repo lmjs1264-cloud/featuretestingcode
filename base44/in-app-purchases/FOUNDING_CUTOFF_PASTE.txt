@@ -1,0 +1,116 @@
+Please update the in-app (iPhone/Android) upgrade screen so the Founding Member plan follows the same rules as on the website:
+
+1. Replace components/AppStorePaywall.jsx with the file below, exactly as written. It adds two optional props: hidePlanIds and planBadges. Keep the ENTITLEMENT_ID and keys in lib/inAppPurchases.js as they are now.
+2. Where <AppStorePaywall> is used, pass:
+   - hidePlanIds={foundingAvailable ? [] : ["founding"]}
+   - planBadges={{ founding: "Founding Member · N spots left" }} (use the real number of spots left; leave planBadges out when Founding is hidden)
+3. foundingAvailable must use the SAME rule the website already uses for Founding (first 500 members, claimable until June 30, 2027). When counting the 500, count BOTH Stripe founding members and app founding members. App founding members are users whose app_store_product is "glym_founding_annual" and for whom isAppStorePremium(user) is true.
+4. If that count needs data a normal user can't read, do it in a backend function that returns only { spotsLeft, available }.
+5. Don't change the website's Stripe checkout or how Founding works there. Don't add npm packages.
+
+===== components/AppStorePaywall.jsx =====
+// AppStorePaywall.jsx — put in components/ in Base44.
+// The upgrade screen shown INSIDE the iPhone/Android app instead of Stripe.
+//
+//   <AppStorePaywall
+//     userId={user.id}
+//     onPaid={async () => { await syncAppStorePurchase(); refresh the user; }}
+//     termsUrl="https://glymdot.com/terms" privacyUrl="https://glymdot.com/privacy"
+//     hidePlanIds={foundingAvailable ? [] : ["founding"]}
+//     planBadges={{ founding: "Founding Member · 23 spots left" }} />
+//
+// hidePlanIds: RevenueCat package identifiers to leave out (e.g. "founding").
+// planBadges:  optional small label shown above a plan, by package identifier.
+// Plans appear in the offering's order, except "founding" is always listed first.
+
+import React, { useEffect, useState } from "react";
+import { setupPurchases, getPlans, buyPlan, restorePurchases } from "../lib/inAppPurchases";
+
+export default function AppStorePaywall({ userId, onPaid, termsUrl, privacyUrl, hidePlanIds = [], planBadges = {} }) {
+  const [plans, setPlans] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        await setupPurchases(userId);
+        const list = await getPlans();
+        if (alive) setPlans(list);
+      } catch (e) {
+        if (alive) { setPlans([]); setError(e?.message || "Couldn't load plans. Check your connection."); }
+      }
+    })();
+    return () => { alive = false; };
+  }, [userId]);
+
+  const visiblePlans = plans
+    ?.filter((p) => !hidePlanIds.includes(p.id))
+    .sort((a, b) => (b.id === "founding") - (a.id === "founding"));
+
+  const run = async (key, fn) => {
+    setBusy(key); setError(""); setNote("");
+    try { await fn(); } catch (e) { setError(e?.message || String(e)); }
+    finally { setBusy(""); }
+  };
+
+  const buy = (plan) => run(plan.id, async () => {
+    const { cancelled, paid } = await buyPlan(plan);
+    if (cancelled) return;
+    if (!paid) throw new Error("Payment is still processing. Try Restore Purchases in a minute.");
+    await onPaid?.();
+  });
+
+  const restore = () => run("restore", async () => {
+    const paid = await restorePurchases();
+    if (paid) await onPaid?.();
+    else setNote("No purchases found for this Apple ID or Google account.");
+  });
+
+  return (
+    <div className="space-y-3">
+      {plans === null && <p className="text-sm text-gray-500">Loading plans…</p>}
+      {visiblePlans?.length === 0 && !error && (
+        <p className="text-sm text-gray-500">No plans are available right now.</p>
+      )}
+      {visiblePlans?.map((plan) => (
+        <button
+          key={plan.id}
+          type="button"
+          disabled={!!busy}
+          onClick={() => buy(plan)}
+          className="w-full rounded-xl border border-gray-300 dark:border-gray-600 p-4 text-left disabled:opacity-50"
+        >
+          {planBadges[plan.id] && (
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-blue-600">{planBadges[plan.id]}</div>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium">{plan.title}</span>
+            <span className="font-semibold whitespace-nowrap">{busy === plan.id ? "…" : plan.label}</span>
+          </div>
+          {plan.description && <div className="mt-1 text-sm text-gray-500">{plan.description}</div>}
+        </button>
+      ))}
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {note && <p className="text-sm text-gray-600 dark:text-gray-300">{note}</p>}
+
+      <button type="button" onClick={restore} disabled={!!busy}
+        className="w-full py-2 text-sm underline disabled:opacity-50">
+        {busy === "restore" ? "Restoring…" : "Restore Purchases"}
+      </button>
+
+      {/* Apple requires this wording and these links on subscription screens. */}
+      <p className="text-xs text-gray-500 leading-relaxed">
+        Subscriptions renew automatically at the price shown until cancelled. Cancel at least
+        24 hours before the end of the current period in your Apple ID or Google Play
+        settings. Payment is charged to your Apple ID or Google Play account.{" "}
+        {termsUrl && <a href={termsUrl} className="underline">Terms of Use</a>}
+        {termsUrl && privacyUrl && " · "}
+        {privacyUrl && <a href={privacyUrl} className="underline">Privacy Policy</a>}
+      </p>
+    </div>
+  );
+}
