@@ -1,0 +1,165 @@
+I'm adjusting referrals for the iPhone/Android app. On the WEBSITE nothing changes: keep every referral offer, the 45-day trial, referral pricing and Stripe checkout exactly as they are. Inside the APP, Apple only lets US users be pointed to the website for referral offers, and in other countries the app can't mention them at all. People must still be able to SEND their referral link from the app everywhere.
+
+Please do exactly this:
+1. Create lib/referrals.js with FILE 1 below, exactly as written. It imports from lib/inAppPurchases.js, which already exists.
+2. Create components/ReferralComponents.jsx with FILE 2 below, exactly as written.
+3. Everywhere referral offers or referral pricing are described (the 45-day trial, $1.25/month, $15/year, "save $8.88", "your friend gets…", referral banners, referral prices on the pricing/premium pages, the referral landing page), get the mode with useReferralMode(current user's id) and only show that content when canShowReferralOffers(mode) is true. While mode is null (still checking), show nothing.
+4. Inside the app (isAppStoreBuild() is true), never start a Stripe checkout for a referral offer, and never apply referral pricing in the app paywall.
+5. On the in-app upgrade screen, under <AppStorePaywall>, add <ReferralWebsiteNotice userId={current user's id} claimUrl="..."/>. For claimUrl, use the page on glymdot.com where someone with a referral claims their offer (include their saved referral code if the app stores one). It only shows itself for US users.
+6. Wherever users get their own referral link to invite friends, use <ShareReferralButton url={their full referral link} text="Join me on glym" />. Keep this visible on both the website and the app, in every country. On the app outside the US, the text around the button must not mention prices, discounts or trials: use "Invite friends to glym" there.
+7. Don't change Stripe, the referral tracking, or how referral rewards are calculated. Don't add npm packages.
+8. When done, list every page you changed.
+
+===== FILE 1: lib/referrals.js =====
+// referrals.js — put in lib/ in Base44.
+// Decides what referral content may be shown where, and shares invite links.
+//
+//   "web"       website: show all referral offers as today (Stripe).
+//   "app-us"    iPhone/Android app on the US store: referral pricing can't be
+//               bought in the app, but Apple allows pointing US users to the
+//               website, so show a "claim it on glymdot.com" note + link.
+//   "app-other" app on any other country's store: Apple forbids mentioning
+//               outside offers, so hide referral pricing completely.
+// In every mode people can still SEND their referral link.
+
+import { isAppStoreBuild, setupPurchases } from "./inAppPurchases";
+
+const plugins = () => window?.Capacitor?.Plugins || {};
+
+let cachedMode = null;
+
+/** Resolves to "web" | "app-us" | "app-other". Pass the logged-in user's id. */
+export async function getReferralMode(userId) {
+  if (!isAppStoreBuild()) return "web";
+  if (cachedMode) return cachedMode;
+  try {
+    await setupPurchases(userId);
+    const { countryCode } = await plugins().Purchases.getStorefront();
+    // iPhone reports "USA", Android reports "US".
+    cachedMode = ["USA", "US"].includes(String(countryCode).toUpperCase()) ? "app-us" : "app-other";
+  } catch {
+    // Can't tell the country: take the safe option and say nothing about offers.
+    cachedMode = "app-other";
+  }
+  return cachedMode;
+}
+
+/** May referral pricing / extended trials be described here? */
+export const canShowReferralOffers = (mode) => mode === "web" || mode === "app-us";
+
+/**
+ * Opens the phone's share sheet (Messages, WhatsApp, email…) with the invite.
+ * Falls back to copying the link. Returns "shared" | "copied" | "cancelled".
+ */
+export async function shareReferralLink({ url, text = "Join me on glym", title = "glym" }) {
+  const Share = plugins().Share;
+  try {
+    if (isAppStoreBuild() && Share) {
+      await Share.share({ title, text, url, dialogTitle: "Invite to glym" });
+      return "shared";
+    }
+    if (navigator.share) {
+      await navigator.share({ title, text, url });
+      return "shared";
+    }
+  } catch (e) {
+    if (/cancel|abort/i.test(String(e?.message || e?.name || e))) return "cancelled";
+    // anything else: fall through to copying
+  }
+  await copyText(url);
+  return "copied";
+}
+
+async function copyText(value) {
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch {
+    const box = document.createElement("textarea");
+    box.value = value;
+    box.setAttribute("readonly", "");
+    box.style.position = "fixed";
+    box.style.opacity = "0";
+    document.body.appendChild(box);
+    box.select();
+    document.execCommand("copy");
+    box.remove();
+  }
+}
+
+/** Opens a glymdot.com page in Safari/Chrome (outside the app). */
+export async function openInBrowser(url) {
+  const Launcher = plugins().AppLauncher;
+  if (isAppStoreBuild() && Launcher) {
+    await Launcher.openUrl({ url });
+  } else {
+    window.open(url, "_blank", "noopener");
+  }
+}
+
+===== FILE 2: components/ReferralComponents.jsx =====
+// ReferralComponents.jsx — put in components/ in Base44.
+//
+// <ShareReferralButton url={user's referral link} />
+//    The "invite a friend" button. Works on the website and in the app.
+//
+// <ReferralWebsiteNotice userId={user.id} claimUrl="https://glymdot.com/..." />
+//    Put on the in-app upgrade screen. Shows the "claim on glymdot.com" note
+//    only for US App Store users; shows nothing anywhere else.
+//
+// useReferralMode(userId)  -> "web" | "app-us" | "app-other" | null (still checking)
+//    Wrap any referral pricing text with canShowReferralOffers(mode).
+
+import React, { useEffect, useState } from "react";
+import { getReferralMode, shareReferralLink, openInBrowser } from "../lib/referrals";
+
+export function useReferralMode(userId) {
+  const [mode, setMode] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    getReferralMode(userId).then((m) => alive && setMode(m));
+    return () => { alive = false; };
+  }, [userId]);
+  return mode;
+}
+
+export function ShareReferralButton({ url, text, className = "", label = "Invite friends" }) {
+  const [status, setStatus] = useState("");
+  const share = async () => {
+    setStatus("");
+    const result = await shareReferralLink({ url, text });
+    if (result === "copied") setStatus("Link copied. Paste it anywhere to share.");
+  };
+  return (
+    <div className={className}>
+      <button
+        type="button"
+        onClick={share}
+        disabled={!url}
+        className="w-full rounded-lg bg-blue-600 text-white px-4 py-2.5 font-medium disabled:opacity-50"
+      >
+        {label}
+      </button>
+      {status && <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{status}</p>}
+    </div>
+  );
+}
+
+export function ReferralWebsiteNotice({ userId, claimUrl, className = "" }) {
+  const mode = useReferralMode(userId);
+  if (mode !== "app-us") return null;
+  return (
+    <div className={`rounded-xl border border-gray-200 dark:border-gray-700 p-4 ${className}`}>
+      <p className="text-sm">
+        Were you invited by a friend? Referral offers are available on glymdot.com.
+        Sign in there with this same account and your Premium works here too.
+      </p>
+      <button
+        type="button"
+        onClick={() => openInBrowser(claimUrl)}
+        className="mt-3 w-full rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium"
+      >
+        Claim referral offer on glymdot.com
+      </button>
+    </div>
+  );
+}
