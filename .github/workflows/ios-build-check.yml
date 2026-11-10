@@ -1,0 +1,26 @@
+name: iOS build check
+on:
+  push:
+    branches: [claude/serene-fermi-lrwa0n]
+    paths: ["ios-app/**", ".github/workflows/ios-build-check.yml"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ios-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx cap sync ios
+      - run: xcodebuild -version
+      - name: Compile for the iOS Simulator (no signing)
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -60
+          exit ${PIPESTATUS[0]}
