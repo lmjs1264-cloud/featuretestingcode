@@ -5,7 +5,15 @@
   "server": {
     "url": "https://glymdot.com",
     "errorPath": "index.html",
-    "allowNavigation": ["glymdot.com", "*.glymdot.com", "*.base44.com", "*.base44.app"]
+    "allowNavigation": [
+      "glymdot.com",
+      "*.glymdot.com",
+      "*.base44.com",
+      "*.base44.app",
+      "appleid.apple.com"
+    ]
   },
-  "ios": { "contentInset": "automatic" }
+  "ios": {
+    "contentInset": "automatic"
+  }
 }
