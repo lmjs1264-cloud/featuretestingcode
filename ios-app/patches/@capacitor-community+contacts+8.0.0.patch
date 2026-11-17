@@ -1,0 +1,18 @@
+diff --git a/node_modules/@capacitor-community/contacts/ios/Sources/ContactsPlugin/ContactsPlugin.swift b/node_modules/@capacitor-community/contacts/ios/Sources/ContactsPlugin/ContactsPlugin.swift
+index 6c1e9bb..9d5caeb 100644
+--- a/node_modules/@capacitor-community/contacts/ios/Sources/ContactsPlugin/ContactsPlugin.swift
++++ b/node_modules/@capacitor-community/contacts/ios/Sources/ContactsPlugin/ContactsPlugin.swift
+@@ -230,4 +230,13 @@ public class ContactsPlugin: CAPPlugin, CAPBridgedPlugin, CNContactPickerDelegat
+ 
+         self.bridge?.releaseCall(call)
+     }
++
++    // glym patch: report a cancelled picker instead of leaving the promise pending.
++    public func contactPickerDidCancel(_ picker: CNContactPickerViewController) {
++        guard let call = self.bridge?.savedCall(withID: self.pickContactCallbackId ?? "") else {
++            return
++        }
++        call.reject("User cancelled the contact picker.")
++        self.bridge?.releaseCall(call)
++    }
+ }
