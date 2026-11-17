@@ -52,7 +52,14 @@ class MainViewController: CAPBridgeViewController {
 
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
-        guard let webView = webView, let original = webView.navigationDelegate else { return }
+        guard let webView = webView else { return }
+        // glym's web pages already pad for the notch and home bar themselves, so the
+        // outer page shouldn't add its own spacing or rubber-band as a whole.
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.bounces = false
+        webView.scrollView.alwaysBounceVertical = false
+        webView.scrollView.alwaysBounceHorizontal = false
+        guard let original = webView.navigationDelegate else { return }
         let logger = NavigationLogger(original: original)
         navigationLogger = logger // the web view only holds its delegate weakly
         webView.navigationDelegate = logger
