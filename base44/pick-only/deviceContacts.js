@@ -57,6 +57,20 @@ async function askPermission() {
   }
 }
 
+/**
+ * "prompt" if the app has never asked for contacts access (show the explainer
+ * first), otherwise "granted" | "limited" | "denied". Always "granted" outside the app.
+ */
+export async function contactsPermissionState() {
+  if (contactsMode() !== "native") return "granted";
+  try {
+    const { contacts } = await plugin().checkPermissions();
+    return contacts || "prompt";
+  } catch {
+    return "prompt";
+  }
+}
+
 const isCancel = (e) => /cancel/i.test(String(e?.message || e));
 
 /**

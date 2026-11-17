@@ -1,0 +1,233 @@
+Please update the phone-contacts import with a short explainer that appears before the phone's permission pop-up.
+
+1. Replace lib/deviceContacts.js with FILE 1 below, exactly as written. It only ADDS a function, contactsPermissionState(); everything else is unchanged.
+2. Replace components/PhoneContactsImportButton.jsx with FILE 2 below, exactly as written.
+3. Keep the existing onImport saving logic exactly as it is now: pass the same onImport function you already use on the Add Someone page.
+4. Don't add buttons to the explainer (Apple requires it to have only "Continue"), don't change its wording, and don't add npm packages.
+
+===== FILE 1: lib/deviceContacts.js =====
+// deviceContacts.js — put in lib/ in Base44.
+// Opens the phone's own contact picker and returns what the person chose.
+// Read-only: it never changes the contacts on the phone. No npm packages.
+//
+// Inside the Glymdot iPhone/Android app: opens the phone's contact screen.
+// Chrome on Android (website): opens Chrome's contact picker (can pick several).
+// Other browsers: contactsMode() returns "none", so hide the button.
+
+const plugin = () => window?.Capacitor?.Plugins?.Contacts;
+const platform = () => window?.Capacitor?.getPlatform?.() || "web";
+
+export function contactsMode() {
+  if (window?.Capacitor?.isNativePlatform?.() && plugin()) return "native";
+  if (typeof navigator !== "undefined" && "contacts" in navigator && "ContactsManager" in window) {
+    return "picker";
+  }
+  return "none";
+}
+
+const PROJECTION = { name: true, organization: true, phones: true, emails: true, note: true };
+
+// Every contact comes back in this shape:
+// { firstName, lastName, displayName, company, phone, phones[], email, emails[], note }
+function fromNative(c) {
+  const n = c.name || {};
+  const phones = (c.phones || []).map((p) => p.number).filter(Boolean);
+  const emails = (c.emails || []).map((e) => e.address).filter(Boolean);
+  return {
+    displayName: n.display || [n.given, n.family].filter(Boolean).join(" "),
+    firstName: n.given || "",
+    lastName: n.family || "",
+    company: c.organization?.company || "",
+    phone: phones[0] || "",
+    phones,
+    email: emails[0] || "",
+    emails,
+    note: c.note || "",
+  };
+}
+
+function fromWebPicker(c) {
+  const displayName = c.name?.[0] || "";
+  const [firstName = "", ...rest] = displayName.split(" ");
+  const phones = c.tel || [];
+  const emails = c.email || [];
+  return {
+    displayName, firstName, lastName: rest.join(" "), company: "",
+    phone: phones[0] || "", phones, email: emails[0] || "", emails, note: "",
+  };
+}
+
+async function askPermission() {
+  let s = await plugin().checkPermissions();
+  if (s.contacts !== "granted") s = await plugin().requestPermissions();
+  if (s.contacts !== "granted") {
+    throw new Error("Contacts access is off. Turn it on in your phone's Settings > Glymdot > Contacts.");
+  }
+}
+
+/**
+ * "prompt" if the app has never asked for contacts access (show the explainer
+ * first), otherwise "granted" | "limited" | "denied". Always "granted" outside the app.
+ */
+export async function contactsPermissionState() {
+  if (contactsMode() !== "native") return "granted";
+  try {
+    const { contacts } = await plugin().checkPermissions();
+    return contacts || "prompt";
+  } catch {
+    return "prompt";
+  }
+}
+
+const isCancel = (e) => /cancel/i.test(String(e?.message || e));
+
+/**
+ * Opens the phone's contact screen. Returns the chosen contacts,
+ * or [] if the person closes it without choosing.
+ * In the app, the phone's screen returns one contact per opening.
+ */
+export async function pickPhoneContacts() {
+  const mode = contactsMode();
+
+  if (mode === "native") {
+    // Android needs permission first. iPhone's picker usually doesn't, so
+    // only ask on iPhone if the picker refuses without it.
+    if (platform() === "android") await askPermission();
+    try {
+      const { contact } = await plugin().pickContact({ projection: PROJECTION });
+      return contact ? [fromNative(contact)] : [];
+    } catch (e) {
+      if (isCancel(e)) return [];
+      if (platform() !== "ios") throw e;
+      await askPermission();
+      try {
+        const { contact } = await plugin().pickContact({ projection: PROJECTION });
+        return contact ? [fromNative(contact)] : [];
+      } catch (e2) {
+        if (isCancel(e2)) return [];
+        throw e2;
+      }
+    }
+  }
+
+  if (mode === "picker") {
+    try {
+      const picked = await navigator.contacts.select(["name", "email", "tel"], { multiple: true });
+      return picked.map(fromWebPicker);
+    } catch (e) {
+      if (e?.name === "AbortError" || e?.name === "InvalidStateError") return [];
+      throw e;
+    }
+  }
+
+  throw new Error("Importing phone contacts works in the Glymdot iPhone or Android app.");
+}
+
+===== FILE 2: components/PhoneContactsImportButton.jsx =====
+// PhoneContactsImportButton.jsx — put in components/ in Base44.
+// One button. Tapping it opens the phone's contact screen; whoever the person
+// picks is handed to onImport so you can save them into Glymdot.
+//
+// The first time (in the iPhone/Android app only), a short explainer appears
+// before the phone's own permission pop-up. Apple's rules: it has ONE button
+// ("Continue") that always leads to the system pop-up — no "Not now"/"Allow".
+//
+//   <PhoneContactsImportButton onImport={async (contacts) => { ...save... }} />
+//
+// onImport gets an array of
+// { firstName, lastName, displayName, company, phone, phones, email, emails, note }
+// It may return how many were actually added (e.g. after skipping duplicates).
+
+import React, { useState } from "react";
+import { contactsMode, contactsPermissionState, pickPhoneContacts } from "../lib/deviceContacts";
+
+export default function PhoneContactsImportButton({ onImport, className = "" }) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [addedAny, setAddedAny] = useState(false);
+  const [explainer, setExplainer] = useState(false);
+
+  if (contactsMode() === "none") return null; // desktop / Safari: hide it
+
+  const pick = async () => {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const contacts = await pickPhoneContacts();
+      if (!contacts.length) return; // closed without choosing
+      const result = await onImport?.(contacts);
+      const added = typeof result === "number" ? result : contacts.length;
+      const names = contacts.map((c) => c.displayName || c.phone || c.email).join(", ");
+      setMessage(added ? `Added ${names}.` : `${names} is already in your contacts.`);
+      setAddedAny(true);
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const start = async () => {
+    if ((await contactsPermissionState()) === "prompt") {
+      setExplainer(true); // first time: explain, then the phone asks
+      return;
+    }
+    pick();
+  };
+
+  const continueFromExplainer = () => {
+    setExplainer(false);
+    pick();
+  };
+
+  return (
+    <div className={className}>
+      <button
+        type="button"
+        onClick={start}
+        disabled={busy}
+        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2.5 font-medium disabled:opacity-50"
+      >
+        {busy ? "Opening contacts…" : addedAny ? "Add another from phone contacts" : "Import from phone contacts"}
+      </button>
+      {message && <p className="mt-2 text-sm text-green-700 dark:text-green-400">{message}</p>}
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+      {explainer && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="contacts-explainer-title"
+        >
+          <div
+            className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-6"
+            style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}
+          >
+            <h2 id="contacts-explainer-title" className="text-lg font-semibold mb-3">
+              Import from your contacts
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
+              For the best experience with glym, we recommend choosing <strong>Allow Full Access</strong> on
+              the next screen. You'll still choose exactly who gets imported — glym only adds the people you
+              pick.
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-5">
+              glym never changes or deletes the contacts on your phone, and you can change this anytime in
+              Settings.
+            </p>
+            <button
+              type="button"
+              onClick={continueFromExplainer}
+              className="w-full rounded-lg bg-blue-600 text-white py-3 font-medium"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
